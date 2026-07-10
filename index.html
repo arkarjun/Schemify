@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schemify — An Open Source Schematization Tool by GeoMinds</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel2:#1c2438; --border:#2a3350;
+    --text:#e8ecf7; --muted:#8b95b3; --accent:#5b8cff; --accent2:#38d9c9;
+    --warn:#ffb454; --err:#ff6b6b; --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+  }
+  header{
+    padding:18px 24px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  header h1{font-size:17px; margin:0; font-weight:600;}
+  header p{margin:2px 0 0; font-size:12.5px; color:var(--muted);}
+  .layout{display:flex; gap:16px; padding:16px; align-items:flex-start; flex-wrap:wrap;}
+  .sidebar{
+    width:320px; flex-shrink:0; display:flex; flex-direction:column; gap:14px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px;
+  }
+  .card h2{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px;}
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:8px; padding:18px 10px; text-align:center;
+    font-size:12.5px; color:var(--muted); cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .dropzone.drag{border-color:var(--accent); background:rgba(91,140,255,.08); color:var(--text);}
+  .dropzone b{color:var(--text);}
+  input[type=file]{display:none;}
+  .rowbtns{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
+  button{
+    font:inherit; font-size:12.5px; padding:7px 11px; border-radius:7px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); cursor:pointer; transition:background .15s, border-color .15s;
+  }
+  button:hover{background:#232d47; border-color:#3a4570;}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#0b1020; font-weight:600;}
+  button.primary:hover{background:#729bff;}
+  button.iconbtn{padding:3px 7px; font-size:11px; line-height:1;}
+  textarea{
+    width:100%; min-height:70px; background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:7px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; padding:8px; resize:vertical;
+  }
+  label.field{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px;}
+  label.field span.val{color:var(--text); font-weight:600;}
+  input[type=range]{width:100%; accent-color:var(--accent);}
+  input[type=color]{
+    width:28px; height:24px; padding:0; border:1px solid var(--border); border-radius:5px; background:none; cursor:pointer;
+  }
+  select{
+    width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:7px; padding:6px 8px; font:inherit; font-size:12.5px;
+  }
+  .status{font-size:12px; margin-top:8px; min-height:16px;}
+  .status.err{color:var(--err);}
+  .status.ok{color:var(--accent2);}
+  .modeSwitch{display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;}
+  .modeSwitch button{flex:1; border:none; border-radius:0; background:var(--panel);}
+  .modeSwitch button.active{background:var(--accent); color:#0b1020; font-weight:600;}
+  .layer-row{
+    border-radius:6px; margin-bottom:3px;
+  }
+  .layer-row-main{
+    display:flex; align-items:center; gap:6px; font-size:12px; padding:5px 2px;
+  }
+  .layer-row-main:hover{background:var(--panel2);}
+  .layer-row-main .name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;}
+  .layer-row-main .type{color:var(--muted); font-size:10px;}
+  .layer-order-btns{display:flex; flex-direction:column; gap:1px;}
+  .layer-order-btns button{padding:0 4px; font-size:9px; line-height:1.3;}
+  .layer-body{
+    padding:8px 8px 10px 26px; font-size:11.5px; background:#131a2b; border-radius:6px; margin:2px 0 8px;
+  }
+  .layer-body .grp{margin-bottom:8px; padding-bottom:8px; border-bottom:1px dashed var(--border);}
+  .layer-body .grp:last-child{border-bottom:none; margin-bottom:0; padding-bottom:0;}
+  .layer-body .grp-title{font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:6px;}
+  .inline-field{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:5px 0;}
+  .inline-field label{font-size:11.5px; color:var(--muted); flex-shrink:0;}
+  .inline-field select, .inline-field input[type=range]{width:120px;}
+  .chk-field{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text); margin:5px 0;}
+  .main{flex:1; min-width:340px; display:flex; flex-direction:column; gap:14px;}
+  .panels{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .panels.styleMode{grid-template-columns:1fr;}
+  @media (max-width:880px){ .panels{grid-template-columns:1fr;} }
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  .panel .ph{
+    padding:9px 13px; border-bottom:1px solid var(--border); font-size:12px; font-weight:600;
+    display:flex; justify-content:space-between; align-items:center; color:var(--muted);
+  }
+  .panel .ph .tag{
+    font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; letter-spacing:.03em;
+  }
+  .tag.raw{background:#2a3350; color:#a9b4d6;}
+  .tag.schem{background:rgba(91,140,255,.18); color:var(--accent);}
+  svg{width:100%; height:460px; display:block; background:#0c111d;}
+  .panels.styleMode svg{height:560px;}
+  .empty{
+    display:flex; align-items:center; justify-content:center; height:460px; color:var(--muted); font-size:13px; text-align:center; padding:20px;
+  }
+  .helpbox{font-size:12px; color:var(--muted); line-height:1.55;}
+  .helpbox b{color:var(--text);}
+  details summary{cursor:pointer; font-size:12px; color:var(--accent); user-select:none;}
+  .footer-note{font-size:11px; color:var(--muted); padding:0 2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Schemify</h1>
+    <p>An Open Source Schematization Tool by GeoMinds</p>
+  </div>
+  <div class="footer-note">Generate + Style</div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+
+    <div class="card">
+      <h2>1. Data</h2>
+      <div id="dropzone" class="dropzone">
+        <div><b>Click to upload</b> or drag a .geojson / .json file here</div>
+      </div>
+      <input type="file" id="fileInput" accept=".json,.geojson,application/geo+json,application/json">
+      <div class="rowbtns">
+        <button id="sampleTransit">Load transit sample</button>
+        <button id="sampleMixed">Load mixed sample</button>
+      </div>
+      <details style="margin-top:10px;">
+        <summary>Or paste GeoJSON text</summary>
+        <textarea id="pasteArea" placeholder="{ &quot;type&quot;: &quot;FeatureCollection&quot;, ... }"></textarea>
+        <div class="rowbtns"><button id="parsePaste" class="primary">Parse pasted JSON</button></div>
+      </details>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="modeSwitch">
+      <button id="modeGenerate" class="active">Generate</button>
+      <button id="modeStyle">Style</button>
+    </div>
+
+    <div id="panelGenerate">
+      <div class="card">
+        <h2>2. Schematization style</h2>
+        <label class="field">Angle snapping</label>
+        <select id="styleMode">
+          <option value="8" selected>Octilinear (45&deg;) &mdash; classic transit-map look</option>
+          <option value="4">Orthogonal (90&deg;) &mdash; blocky / circuit-board look</option>
+          <option value="0">Off &mdash; simplify only, keep real angles</option>
+        </select>
+
+        <label class="field">Simplify tolerance <span class="val" id="simplifyVal">1.5%</span></label>
+        <input type="range" id="simplify" min="0" max="6" step="0.1" value="1.5">
+
+        <label class="field">Straightening strength <span class="val" id="iterVal">70</span></label>
+        <input type="range" id="iterations" min="0" max="150" step="5" value="70">
+
+        <label class="field">Minimum segment length <span class="val" id="minlenVal">55%</span></label>
+        <input type="range" id="minlen" min="10" max="100" step="5" value="55">
+      </div>
+    </div>
+
+    <div id="panelStyle" style="display:none;">
+      <div class="card">
+        <h2>Background</h2>
+        <div class="inline-field">
+          <label>Canvas color</label>
+          <input type="color" id="bgColor" value="#0c111d">
+        </div>
+        <div class="rowbtns">
+          <button id="themeDark">Dark preset</button>
+          <button id="themeLight">Light preset</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Style preset</h2>
+        <div class="rowbtns">
+          <button id="exportStyle">Export style JSON</button>
+          <button id="importStyleBtn">Import style JSON</button>
+        </div>
+        <input type="file" id="importStyleInput" accept=".json" style="display:none;">
+        <div id="styleStatus" class="status"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Layers</h2>
+      <div id="legend">
+        <div class="footer-note">No data loaded yet.</div>
+      </div>
+    </div>
+
+    <div class="card helpbox">
+      <details>
+        <summary>How this works / why octilinear?</summary>
+        <div style="margin-top:8px;">
+          Real geography is messy &mdash; wiggly roads, uneven spacing. A <b>schematic map</b> (think subway maps)
+          simplifies geometry, straightens lines, and snaps angles to a small set of directions (usually 45&deg; or 90&deg;)
+          so the result reads cleanly at a glance, at the cost of true geographic accuracy.<br><br>
+          This tool: simplifies each line/polygon (Douglas&ndash;Peucker), builds a graph of shared points,
+          then iteratively nudges nodes so edges align to the snapped angles while keeping relative topology.
+          At junctions with 3+ connections a perfect fit isn't always possible &mdash; this is a fast heuristic,
+          not a full constraint solver, so busy junctions may land a few degrees off-grid.<br><br>
+          Switch to the <b>Style</b> tab to recolor, re-weight, and relabel each layer once you're happy with the shape.
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="panels" id="panelsGrid">
+      <div class="panel" id="origPanel">
+        <div class="ph"><span>Original (projected &amp; simplified)</span><span class="tag raw">RAW</span></div>
+        <div class="panelwrap"><div id="origHolder" class="empty">Upload a GeoJSON file to begin</div></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span>Schematic output</span><span class="tag schem">SCHEMATIC</span></div>
+        <div class="panelwrap"><div id="schemHolder" class="empty">&mdash;</div></div>
+      </div>
+    </div>
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <div class="footer-note" id="statsLine">No data loaded.</div>
+      <div class="rowbtns">
+        <button id="downloadSvg">Download schematic SVG</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Geometry helpers (unchanged core algorithm) ----------
+  function project(lon, lat, lat0){
+    const R = 6371000, rad = Math.PI/180;
+    return [R*lon*rad*Math.cos(lat0*rad), R*lat*rad];
+  }
+
+  function rdpSimplify(points, tolerance){
+    if (points.length < 3 || tolerance <= 0) return points.slice();
+    function perpDist(p,a,b){
+      const dx=b[0]-a[0], dy=b[1]-a[1];
+      const len=Math.hypot(dx,dy);
+      if (len===0) return Math.hypot(p[0]-a[0], p[1]-a[1]);
+      const t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(len*len);
+      const cx=a[0]+t*dx, cy=a[1]+t*dy;
+      return Math.hypot(p[0]-cx, p[1]-cy);
+    }
+    function rdp(pts){
+      if (pts.length<3) return pts;
+      let maxD=-1, idx=-1;
+      for (let i=1;i<pts.length-1;i++){
+        const d=perpDist(pts[i],pts[0],pts[pts.length-1]);
+        if (d>maxD){maxD=d; idx=i;}
+      }
+      if (maxD>tolerance){
+        const left=rdp(pts.slice(0,idx+1));
+        const right=rdp(pts.slice(idx));
+        return left.slice(0,-1).concat(right);
+      }
+      return [pts[0], pts[pts.length-1]];
+    }
+    return rdp(points);
+  }
+
+  function coordKey(x,y,eps){
+    return Math.round(x/eps)+","+Math.round(y/eps);
+  }
+
+  function snapAngle(angle, steps){
+    if (steps<=0) return angle;
+    const inc=(2*Math.PI)/steps;
+    return Math.round(angle/inc)*inc;
+  }
+
+  function schematize(nodes, edges, opts){
+    if (edges.length===0) return;
+    const steps = opts.steps, iterations = opts.iterations, minLenFrac = opts.minLenFrac;
+    const avgLen = edges.reduce((s,e)=>s+e.len,0)/edges.length || 1;
+    const minLen = avgLen*minLenFrac;
+    for (const e of edges){
+      e.snapped = steps>0 ? snapAngle(e.angle, steps) : e.angle;
+      e.targetLen = Math.max(e.len, minLen);
+    }
+    let step=0.6;
+    for (let iter=0; iter<iterations; iter++){
+      for (const n of nodes){
+        if (n.edges.length===0) continue;
+        let sx=0, sy=0, c=0;
+        for (const e of n.edges){
+          const isA = e.a===n;
+          const other = isA ? e.b : e.a;
+          let dx,dy;
+          if (isA){ dx=-Math.cos(e.snapped)*e.targetLen; dy=-Math.sin(e.snapped)*e.targetLen; }
+          else { dx=Math.cos(e.snapped)*e.targetLen; dy=Math.sin(e.snapped)*e.targetLen; }
+          sx+=other.x+dx; sy+=other.y+dy; c++;
+        }
+        const tx=sx/c, ty=sy/c;
+        n.x += (tx-n.x)*step;
+        n.y += (ty-n.y)*step;
+      }
+      step*=0.985;
+    }
+  }
+
+  function resolveOverlaps(nodes, edgeSet, minDist, iterations){
+    for (let iter=0; iter<iterations; iter++){
+      for (let i=0;i<nodes.length;i++){
+        for (let j=i+1;j<nodes.length;j++){
+          const a=nodes[i], b=nodes[j];
+          if (edgeSet.has(a.id+"_"+b.id) || edgeSet.has(b.id+"_"+a.id)) continue;
+          let dx=b.x-a.x, dy=b.y-a.y;
+          let dist=Math.hypot(dx,dy);
+          if (dist===0){ const ang=Math.random()*Math.PI*2; dx=Math.cos(ang); dy=Math.sin(ang); dist=1; }
+          if (dist<minDist){
+            const push=(minDist-dist)/2;
+            const ux=dx/dist, uy=dy/dist;
+            a.x -= ux*push; a.y -= uy*push;
+            b.x += ux*push; b.y += uy*push;
+          }
+        }
+      }
+    }
+  }
+
+  // ---------- GeoJSON parsing ----------
+  const PALETTE = ["#5b8cff","#38d9c9","#ffb454","#ff6b8b","#a78bfa","#4ade80","#fb923c","#60a5fa","#f472b6","#facc15"];
+
+  function featureName(props, idx){
+    if (!props) return "Feature "+(idx+1);
+    return props.name || props.NAME || props.Name || props.title || props.label || ("Feature "+(idx+1));
+  }
+
+  function extractFeatures(geojson){
+    let feats = [];
+    if (geojson.type === "FeatureCollection") feats = geojson.features || [];
+    else if (geojson.type === "Feature") feats = [geojson];
+    else if (geojson.type) feats = [{type:"Feature", properties:{}, geometry: geojson}];
+    else throw new Error("Not a recognizable GeoJSON object.");
+
+    const out = [];
+    feats.forEach((f) => {
+      if (!f.geometry) return;
+      out.push({
+        idx: out.length,
+        name: featureName(f.properties, out.length),
+        geomType: f.geometry.type,
+        color: (f.properties && (f.properties.stroke || f.properties.color)) || PALETTE[out.length % PALETTE.length],
+        props: f.properties || {},
+        geometry: f.geometry,
+        visible: true
+      });
+    });
+    if (out.length===0) throw new Error("No features with geometry found.");
+    return out;
+  }
+
+  function geometryToLineArrays(geom){
+    const lines = [], closed = [], points = [];
+    function ring(coords, isClosed){ lines.push(coords.slice()); closed.push(isClosed); }
+    switch(geom.type){
+      case "LineString": ring(geom.coordinates, false); break;
+      case "MultiLineString": geom.coordinates.forEach(c=>ring(c,false)); break;
+      case "Polygon": geom.coordinates.forEach(c=>ring(c,true)); break;
+      case "MultiPolygon": geom.coordinates.forEach(poly=>poly.forEach(c=>ring(c,true))); break;
+      case "Point": points.push(geom.coordinates); break;
+      case "MultiPoint": geom.coordinates.forEach(c=>points.push(c)); break;
+      default: break;
+    }
+    return {lines, closed, points};
+  }
+
+  function computeBBox(featuresRaw){
+    let minLon=Infinity,maxLon=-Infinity,minLat=Infinity,maxLat=-Infinity;
+    featuresRaw.forEach(f=>{
+      const {lines, points} = geometryToLineArrays(f.geometry);
+      lines.forEach(line=>line.forEach(([lo,la])=>{
+        if(lo<minLon)minLon=lo; if(lo>maxLon)maxLon=lo;
+        if(la<minLat)minLat=la; if(la>maxLat)maxLat=la;
+      }));
+      points.forEach(([lo,la])=>{
+        if(lo<minLon)minLon=lo; if(lo>maxLon)maxLon=lo;
+        if(la<minLat)minLat=la; if(la>maxLat)maxLat=la;
+      });
+    });
+    return {minLon,maxLon,minLat,maxLat};
+  }
+
+  function isLineish(geomType){ return geomType==="LineString" || geomType==="MultiLineString"; }
+  function isPolygonish(geomType){ return geomType==="Polygon" || geomType==="MultiPolygon"; }
+  function isPointish(geomType){ return geomType==="Point" || geomType==="MultiPoint"; }
+
+  function defaultStyleFor(feat){
+    const poly = isPolygonish(feat.geomType);
+    const line = isLineish(feat.geomType);
+    return {
+      color: feat.color,
+      strokeWidth: poly ? 2 : 2.6,
+      dash: "solid",
+      opacity: 1,
+      fillOpacity: poly ? 0.16 : 0,
+      showNodes: true,
+      nodeRadius: isPointish(feat.geomType) ? 5 : (poly||line ? 4.2 : 4),
+      nodeShape: "circle",
+      showLabel: isPointish(feat.geomType),
+      labelSize: 10.5,
+      labelColor: "#e8ecf7"
+    };
+  }
+
+  function dashArray(dash, width){
+    if (dash==="dashed") return (width*2.2).toFixed(1)+","+(width*1.6).toFixed(1);
+    if (dash==="dotted") return (width*0.6).toFixed(1)+","+(width*1.8).toFixed(1);
+    return null;
+  }
+
+  // ---------- State ----------
+  let state = { rawFeatures: null, lat0: 0, bbox: null, styles: [], order: [], background: "#0c111d" };
+  let expandedLayer = null;
+  let currentMode = "generate";
+
+  function runPipeline(){
+    if (!state.rawFeatures) return;
+    const simplifyPct = parseFloat(document.getElementById("simplify").value);
+    const steps = parseInt(document.getElementById("styleMode").value, 10);
+    const iterations = parseInt(document.getElementById("iterations").value, 10);
+    const minLenFrac = parseInt(document.getElementById("minlen").value,10)/100;
+
+    const feats = state.rawFeatures;
+    const bbox = state.bbox;
+    const diag = Math.hypot(
+      project(bbox.maxLon,bbox.maxLat,state.lat0)[0]-project(bbox.minLon,bbox.minLat,state.lat0)[0],
+      project(bbox.maxLon,bbox.maxLat,state.lat0)[1]-project(bbox.minLon,bbox.minLat,state.lat0)[1]
+    ) || 1000;
+    const simplifyTol = diag * (simplifyPct/100);
+    const snapEps = Math.max(diag*0.0015, 0.01);
+
+    const origDraw = [];
+    const nodeByKey = new Map();
+    const nodes = [];
+    const edges = [];
+    const edgeSet = new Set();
+    const lineSequences = [];
+    const pointNodes = [];
+
+    function getNode(x,y){
+      const k = coordKey(x,y,snapEps);
+      let n = nodeByKey.get(k);
+      if (!n){ n={id:nodes.length,x,y,ox:x,oy:y,edges:[]}; nodes.push(n); nodeByKey.set(k,n); }
+      return n;
+    }
+
+    feats.forEach(f=>{
+      if (!f.visible) return;
+      const {lines, closed, points} = geometryToLineArrays(f.geometry);
+      const projLines = lines.map(line => rdpSimplify(line.map(([lo,la])=>project(lo,la,state.lat0)), simplifyTol));
+      const projPoints = points.map(([lo,la])=>project(lo,la,state.lat0));
+      origDraw.push({featureIdx:f.idx, lines:projLines, closed, points:projPoints});
+
+      projLines.forEach((line, li) => {
+        const isClosed = closed[li];
+        const ids = [];
+        for (let i=0;i<line.length;i++){
+          const n = getNode(line[i][0], line[i][1]);
+          ids.push(n.id);
+        }
+        const segCount = isClosed ? line.length : line.length-1;
+        for (let i=0;i<segCount;i++){
+          const aId = ids[i], bId = ids[(i+1)%ids.length];
+          if (aId===bId) continue;
+          const a = nodes[aId], b = nodes[bId];
+          const key1=a.id+"_"+b.id;
+          if (edgeSet.has(key1) || edgeSet.has(b.id+"_"+a.id)) continue;
+          const len=Math.hypot(b.ox-a.ox, b.oy-a.oy);
+          const angle=Math.atan2(b.oy-a.oy, b.ox-a.ox);
+          const e={a,b,len,angle,featureIdx:f.idx};
+          edges.push(e); a.edges.push(e); b.edges.push(e);
+          edgeSet.add(key1);
+        }
+        lineSequences.push({featureIdx:f.idx, nodeIds:ids, closed:isClosed});
+      });
+
+      projPoints.forEach(([x,y])=>{
+        const n = getNode(x,y);
+        pointNodes.push({node:n, featureIdx:f.idx});
+      });
+    });
+
+    schematize(nodes, edges, {steps, iterations, minLenFrac});
+    const avgTargetLen = edges.length ? edges.reduce((s,e)=>s+e.targetLen,0)/edges.length : diag*0.08;
+    resolveOverlaps(nodes, edgeSet, avgTargetLen*0.28, 15);
+
+    render(origDraw, feats, nodes, lineSequences, pointNodes, {nodeCount:nodes.length, edgeCount:edges.length});
+  }
+
+  // ---------- Rendering ----------
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs){
+    const el = document.createElementNS(SVGNS, tag);
+    for (const k in attrs){ if (attrs[k]!==null && attrs[k]!==undefined) el.setAttribute(k, attrs[k]); }
+    return el;
+  }
+
+  function fitTransform(points, w, h, pad){
+    if (points.length===0) return {scale:1, minX:0,minY:0,maxX:0,maxY:0, pad, w, h};
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    points.forEach(([x,y])=>{ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; });
+    const spanX = Math.max(maxX-minX, 1e-6), spanY = Math.max(maxY-minY, 1e-6);
+    const scale = Math.min((w-2*pad)/spanX, (h-2*pad)/spanY);
+    return {scale, minX, minY, maxX, maxY, pad, w, h};
+  }
+  function toScreen(t, x, y){
+    const px = t.pad + (x - t.minX)*t.scale + (t.w-2*t.pad - (t.maxX-t.minX)*t.scale)/2;
+    const py = t.pad + (t.maxY - y)*t.scale + (t.h-2*t.pad - (t.maxY-t.minY)*t.scale)/2;
+    return [px, py];
+  }
+
+  function makeSvgShell(w,h){
+    return svgEl("svg", {viewBox:`0 0 ${w} ${h}`, xmlns:SVGNS});
+  }
+
+  function drawNodeShape(svg, shape, cx, cy, r, fill, stroke, strokeWidth){
+    if (shape==="square"){
+      svg.appendChild(svgEl("rect",{x:cx-r,y:cy-r,width:r*2,height:r*2,fill,stroke,"stroke-width":strokeWidth}));
+    } else {
+      svg.appendChild(svgEl("circle",{cx,cy,r,fill,stroke,"stroke-width":strokeWidth}));
+    }
+  }
+
+  function renderOriginal(origDraw, feats, W, H, pad){
+    const allPts = [];
+    origDraw.forEach(fd=>{ fd.lines.forEach(l=>l.forEach(p=>allPts.push(p))); fd.points.forEach(p=>allPts.push(p)); });
+    const t = fitTransform(allPts, W, H, pad);
+    const svg = makeSvgShell(W,H);
+    origDraw.forEach(fd=>{
+      const feat = feats[fd.featureIdx];
+      fd.lines.forEach((line, li)=>{
+        if (line.length<2) return;
+        const d = line.map((p,i)=> (i===0?"M":"L")+toScreen(t,p[0],p[1]).join(","));
+        if (fd.closed[li]) d.push("Z");
+        svg.appendChild(svgEl("path",{d:d.join(" "), fill: fd.closed[li]? feat.color+"22":"none", stroke:"#7d88ad", "stroke-width":1.1, "stroke-linejoin":"round", "stroke-linecap":"round"}));
+      });
+      fd.points.forEach(p=>{
+        const [px,py]=toScreen(t,p[0],p[1]);
+        svg.appendChild(svgEl("circle",{cx:px,cy:py,r:3,fill:"#7d88ad"}));
+      });
+    });
+    mount("origHolder", svg);
+  }
+
+  function renderSchematic(nodes, lineSequences, pointNodes, feats, W, H, pad){
+    const allPts = nodes.map(n=>[n.x,n.y]);
+    const t = fitTransform(allPts, W, H, pad);
+    const svg = makeSvgShell(W,H);
+    svg.appendChild(svgEl("rect",{x:0,y:0,width:W,height:H,fill:state.background}));
+
+    const order = state.order.filter(idx=>feats[idx] && feats[idx].visible);
+
+    // 1) fills + strokes, in layer order
+    order.forEach(fIdx=>{
+      const feat = feats[fIdx];
+      const style = state.styles[fIdx];
+      const seqs = lineSequences.filter(s=>s.featureIdx===fIdx);
+      seqs.forEach(seq=>{
+        if (seq.nodeIds.length<2) return;
+        const pts = seq.nodeIds.map(id=>toScreen(t, nodes[id].x, nodes[id].y));
+        let d = pts.map((p,i)=>(i===0?"M":"L")+p.join(",")).join(" ");
+        if (seq.closed) d += " Z";
+        const da = dashArray(style.dash, style.strokeWidth);
+        if (seq.closed){
+          const fillHex = style.fillOpacity>0 ? style.color + Math.round(style.fillOpacity*255).toString(16).padStart(2,"0") : "none";
+          svg.appendChild(svgEl("path",{d, fill:fillHex, stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
+        } else {
+          svg.appendChild(svgEl("path",{d, fill:"none", stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
+        }
+      });
+    });
+
+    // 2) junction / endpoint dots, in layer order
+    order.forEach(fIdx=>{
+      const feat = feats[fIdx];
+      const style = state.styles[fIdx];
+      if (!style.showNodes) return;
+      const seqs = lineSequences.filter(s=>s.featureIdx===fIdx);
+      const shown = new Set();
+      seqs.forEach(seq=>{
+        const n = seq.nodeIds.length;
+        seq.nodeIds.forEach((id, i)=>{
+          const node = nodes[id];
+          const isJunction = node.edges.length >= 3;
+          const isEndpoint = !seq.closed && (i===0 || i===n-1);
+          if ((isJunction || isEndpoint) && !shown.has(id)){
+            shown.add(id);
+            const [px,py]=toScreen(t,node.x,node.y);
+            const r = isJunction ? style.nodeRadius*1.05 : style.nodeRadius*0.85;
+            drawNodeShape(svg, style.nodeShape, px, py, r, state.background, style.color, 2);
+          }
+        });
+      });
+    });
+
+    // 3) standalone points (stations / POIs), in layer order
+    order.forEach(fIdx=>{
+      const feat = feats[fIdx];
+      const style = state.styles[fIdx];
+      const pts = pointNodes.filter(p=>p.featureIdx===fIdx);
+      pts.forEach(({node})=>{
+        const [px,py]=toScreen(t,node.x,node.y);
+        if (style.showNodes){
+          drawNodeShape(svg, style.nodeShape, px, py, style.nodeRadius, style.color, state.background, 1.5);
+        }
+      });
+    });
+
+    // 4) labels, always last (on top)
+    order.forEach(fIdx=>{
+      const feat = feats[fIdx];
+      const style = state.styles[fIdx];
+      if (!style.showLabel) return;
+      const rawName = feat.props && (feat.props.name||feat.props.NAME||feat.props.Name||feat.props.title||feat.props.label);
+      if (!rawName) return;
+
+      if (isPointish(feat.geomType)){
+        pointNodes.filter(p=>p.featureIdx===fIdx).forEach(({node})=>{
+          const [px,py]=toScreen(t,node.x,node.y);
+          const txt = svgEl("text",{x:px+style.nodeRadius+3,y:py+style.labelSize*0.35,"font-size":style.labelSize,fill:style.labelColor,"font-family":"inherit"});
+          txt.textContent = rawName;
+          svg.appendChild(txt);
+        });
+      } else {
+        const seqs = lineSequences.filter(s=>s.featureIdx===fIdx);
+        seqs.forEach(seq=>{
+          if (seq.nodeIds.length===0) return;
+          let lx, ly;
+          if (seq.closed){
+            let sx=0, sy=0;
+            seq.nodeIds.forEach(id=>{ sx+=nodes[id].x; sy+=nodes[id].y; });
+            lx = sx/seq.nodeIds.length; ly = sy/seq.nodeIds.length;
+          } else {
+            const midIdx = Math.floor(seq.nodeIds.length/2);
+            lx = nodes[seq.nodeIds[midIdx]].x; ly = nodes[seq.nodeIds[midIdx]].y;
+          }
+          const [px,py] = toScreen(t, lx, ly);
+          const txt = svgEl("text",{x:px+6,y:py-6,"font-size":style.labelSize,fill:style.labelColor,"font-family":"inherit"});
+          txt.textContent = rawName;
+          svg.appendChild(txt);
+        });
+      }
+    });
+
+    mount("schemHolder", svg);
+    return svg;
+  }
+
+  function mount(id, svg){
+    const holder = document.getElementById(id);
+    holder.innerHTML = "";
+    holder.appendChild(svg);
+  }
+
+  function render(origDraw, feats, nodes, lineSequences, pointNodes, counts){
+    const W=900,H = currentMode==="style" ? 720 : 460, pad=34;
+    if (currentMode!=="style") renderOriginal(origDraw, feats, W,H,pad);
+    const svg = renderSchematic(nodes, lineSequences, pointNodes, feats, W,H,pad);
+    window.__lastSchematicSvg = svg;
+    document.getElementById("statsLine").textContent =
+      `${feats.filter(f=>f.visible).length}/${feats.length} layers visible · ${counts.nodeCount} nodes · ${counts.edgeCount} edges`;
+  }
+
+  // ---------- Legend / layer editor ----------
+  function renderLegend(){
+    const feats = state.rawFeatures;
+    const el = document.getElementById("legend");
+    el.innerHTML = "";
+    if (!feats){ el.innerHTML = '<div class="footer-note">No data loaded yet.</div>'; return; }
+
+    state.order.forEach((fIdx, pos) => {
+      const f = feats[fIdx];
+      const style = state.styles[fIdx];
+      const row = document.createElement("div");
+      row.className = "layer-row";
+
+      const main = document.createElement("div");
+      main.className = "layer-row-main";
+      main.innerHTML = `
+        <input type="checkbox" ${f.visible?"checked":""} class="visToggle" style="accent-color:${style.color}">
+        <input type="color" class="colorPick" value="${style.color}">
+        <span class="name">${f.name}</span>
+        <span class="type">${f.geomType.replace("Multi","M.")}</span>
+        <div class="layer-order-btns">
+          <button class="iconbtn upBtn" ${pos===0?"disabled":""}>&#9650;</button>
+          <button class="iconbtn downBtn" ${pos===state.order.length-1?"disabled":""}>&#9660;</button>
+        </div>
+        <button class="iconbtn expandBtn">${expandedLayer===fIdx?"&#9661;":"&#9655;"}</button>
+      `;
+      row.appendChild(main);
+
+      main.querySelector(".visToggle").addEventListener("change", e=>{ f.visible = e.target.checked; runPipeline(); });
+      main.querySelector(".colorPick").addEventListener("input", e=>{ style.color = e.target.value; runPipeline(); });
+      main.querySelector(".name").addEventListener("click", ()=>{ expandedLayer = (expandedLayer===fIdx?null:fIdx); renderLegend(); });
+      main.querySelector(".expandBtn").addEventListener("click", ()=>{ expandedLayer = (expandedLayer===fIdx?null:fIdx); renderLegend(); });
+      const upBtn = main.querySelector(".upBtn");
+      const downBtn = main.querySelector(".downBtn");
+      if (upBtn) upBtn.addEventListener("click", ()=>{ moveLayer(pos,-1); });
+      if (downBtn) downBtn.addEventListener("click", ()=>{ moveLayer(pos,1); });
+
+      if (expandedLayer===fIdx){
+        row.appendChild(buildLayerBody(f, style));
+      }
+      el.appendChild(row);
+    });
+  }
+
+  function moveLayer(pos, dir){
+    const newPos = pos+dir;
+    if (newPos<0 || newPos>=state.order.length) return;
+    const tmp = state.order[pos];
+    state.order[pos] = state.order[newPos];
+    state.order[newPos] = tmp;
+    renderLegend();
+    runPipeline();
+  }
+
+  function buildLayerBody(f, style){
+    const body = document.createElement("div");
+    body.className = "layer-body";
+    const line = isLineish(f.geomType), poly = isPolygonish(f.geomType), point = isPointish(f.geomType);
+
+    if (line || poly){
+      const grp = document.createElement("div");
+      grp.className = "grp";
+      grp.innerHTML = `<div class="grp-title">Line style</div>
+        <div class="inline-field"><label>Width</label><input type="range" min="0.5" max="7" step="0.5" value="${style.strokeWidth}" class="fWidth"></div>
+        <div class="inline-field"><label>Dash</label>
+          <select class="fDash">
+            <option value="solid" ${style.dash==="solid"?"selected":""}>Solid</option>
+            <option value="dashed" ${style.dash==="dashed"?"selected":""}>Dashed</option>
+            <option value="dotted" ${style.dash==="dotted"?"selected":""}>Dotted</option>
+          </select>
+        </div>
+        <div class="inline-field"><label>Opacity</label><input type="range" min="10" max="100" step="5" value="${Math.round(style.opacity*100)}" class="fOpacity"></div>
+        ${poly?`<div class="inline-field"><label>Fill opacity</label><input type="range" min="0" max="60" step="5" value="${Math.round(style.fillOpacity*100)}" class="fFillOpacity"></div>`:""}
+      `;
+      grp.querySelector(".fWidth").addEventListener("input", e=>{ style.strokeWidth = parseFloat(e.target.value); runPipeline(); });
+      grp.querySelector(".fDash").addEventListener("change", e=>{ style.dash = e.target.value; runPipeline(); });
+      grp.querySelector(".fOpacity").addEventListener("input", e=>{ style.opacity = parseInt(e.target.value,10)/100; runPipeline(); });
+      const fillOp = grp.querySelector(".fFillOpacity");
+      if (fillOp) fillOp.addEventListener("input", e=>{ style.fillOpacity = parseInt(e.target.value,10)/100; runPipeline(); });
+      body.appendChild(grp);
+    }
+
+    const nodeGrp = document.createElement("div");
+    nodeGrp.className = "grp";
+    nodeGrp.innerHTML = `<div class="grp-title">${point?"Station style":"Node style"}</div>
+      <div class="chk-field"><input type="checkbox" class="fShowNodes" ${style.showNodes?"checked":""}><label>Show ${point?"station markers":"junction/endpoint dots"}</label></div>
+      <div class="inline-field"><label>Radius</label><input type="range" min="2" max="10" step="0.5" value="${style.nodeRadius}" class="fRadius"></div>
+      <div class="inline-field"><label>Shape</label>
+        <select class="fShape">
+          <option value="circle" ${style.nodeShape==="circle"?"selected":""}>Circle</option>
+          <option value="square" ${style.nodeShape==="square"?"selected":""}>Square</option>
+        </select>
+      </div>`;
+    nodeGrp.querySelector(".fShowNodes").addEventListener("change", e=>{ style.showNodes = e.target.checked; runPipeline(); });
+    nodeGrp.querySelector(".fRadius").addEventListener("input", e=>{ style.nodeRadius = parseFloat(e.target.value); runPipeline(); });
+    nodeGrp.querySelector(".fShape").addEventListener("change", e=>{ style.nodeShape = e.target.value; runPipeline(); });
+    body.appendChild(nodeGrp);
+
+    const labelGrp = document.createElement("div");
+    labelGrp.className = "grp";
+    labelGrp.innerHTML = `<div class="grp-title">Label</div>
+      <div class="chk-field"><input type="checkbox" class="fShowLabel" ${style.showLabel?"checked":""}><label>Show label</label></div>
+      <div class="inline-field"><label>Size</label><input type="range" min="8" max="18" step="0.5" value="${style.labelSize}" class="fLabelSize"></div>
+      <div class="inline-field"><label>Color</label><input type="color" class="fLabelColor" value="${style.labelColor}"></div>`;
+    labelGrp.querySelector(".fShowLabel").addEventListener("change", e=>{ style.showLabel = e.target.checked; runPipeline(); });
+    labelGrp.querySelector(".fLabelSize").addEventListener("input", e=>{ style.labelSize = parseFloat(e.target.value); runPipeline(); });
+    labelGrp.querySelector(".fLabelColor").addEventListener("input", e=>{ style.labelColor = e.target.value; runPipeline(); });
+    body.appendChild(labelGrp);
+
+    return body;
+  }
+
+  // ---------- Loading ----------
+  function setStatus(msg, cls){
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = "status" + (cls?(" "+cls):"");
+  }
+  function setStyleStatus(msg, cls){
+    const el = document.getElementById("styleStatus");
+    el.textContent = msg;
+    el.className = "status" + (cls?(" "+cls):"");
+  }
+
+  function loadGeoJSON(geojson){
+    try{
+      const feats = extractFeatures(geojson);
+      const bbox = computeBBox(feats);
+      const lat0 = (bbox.minLat+bbox.maxLat)/2;
+      state = {
+        rawFeatures: feats, lat0, bbox,
+        styles: feats.map(f=>defaultStyleFor(f)),
+        order: feats.map(f=>f.idx),
+        background: document.getElementById("bgColor").value || "#0c111d"
+      };
+      expandedLayer = null;
+      renderLegend();
+      runPipeline();
+      setStatus(`Loaded ${feats.length} feature(s).`, "ok");
+    }catch(err){
+      setStatus("Error: "+err.message, "err");
+      console.error(err);
+    }
+  }
+
+  function handleFile(file){
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const json = JSON.parse(e.target.result);
+        loadGeoJSON(json);
+      }catch(err){
+        setStatus("Could not parse file as JSON: "+err.message, "err");
+      }
+    };
+    reader.onerror = () => setStatus("Could not read file.", "err");
+    reader.readAsText(file);
+  }
+
+  // ---------- Wiring: data ----------
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+  dropzone.addEventListener("click", ()=>fileInput.click());
+  fileInput.addEventListener("change", e=>{ if (e.target.files[0]) handleFile(e.target.files[0]); });
+  ["dragenter","dragover"].forEach(ev=>dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add("drag"); }));
+  ["dragleave","drop"].forEach(ev=>dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove("drag"); }));
+  dropzone.addEventListener("drop", e=>{ if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+  document.getElementById("parsePaste").addEventListener("click", ()=>{
+    const txt = document.getElementById("pasteArea").value.trim();
+    if (!txt){ setStatus("Paste some GeoJSON first.", "err"); return; }
+    try{ loadGeoJSON(JSON.parse(txt)); }
+    catch(err){ setStatus("Invalid JSON: "+err.message, "err"); }
+  });
+
+  function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+  const debouncedRun = debounce(runPipeline, 120);
+
+  document.getElementById("simplify").addEventListener("input", e=>{
+    document.getElementById("simplifyVal").textContent = parseFloat(e.target.value).toFixed(1)+"%";
+    debouncedRun();
+  });
+  document.getElementById("iterations").addEventListener("input", e=>{
+    document.getElementById("iterVal").textContent = e.target.value;
+    debouncedRun();
+  });
+  document.getElementById("minlen").addEventListener("input", e=>{
+    document.getElementById("minlenVal").textContent = e.target.value+"%";
+    debouncedRun();
+  });
+  document.getElementById("styleMode").addEventListener("change", debouncedRun);
+
+  document.getElementById("downloadSvg").addEventListener("click", ()=>{
+    const svg = window.__lastSchematicSvg;
+    if (!svg){ setStatus("Nothing to export yet.", "err"); return; }
+    const clone = svg.cloneNode(true);
+    clone.setAttribute("xmlns", SVGNS);
+    const src = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([src], {type:"image/svg+xml"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "schemify-map.svg";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- Wiring: mode switch ----------
+  const modeGenerate = document.getElementById("modeGenerate");
+  const modeStyle = document.getElementById("modeStyle");
+  const panelGenerate = document.getElementById("panelGenerate");
+  const panelStyle = document.getElementById("panelStyle");
+  const panelsGrid = document.getElementById("panelsGrid");
+  const origPanel = document.getElementById("origPanel");
+
+  function setMode(m){
+    currentMode = m;
+    modeGenerate.classList.toggle("active", m==="generate");
+    modeStyle.classList.toggle("active", m==="style");
+    panelGenerate.style.display = m==="generate" ? "" : "none";
+    panelStyle.style.display = m==="style" ? "" : "none";
+    origPanel.style.display = m==="style" ? "none" : "";
+    panelsGrid.classList.toggle("styleMode", m==="style");
+    if (state.rawFeatures) runPipeline();
+  }
+  modeGenerate.addEventListener("click", ()=>setMode("generate"));
+  modeStyle.addEventListener("click", ()=>setMode("style"));
+
+  // ---------- Wiring: style panel ----------
+  document.getElementById("bgColor").addEventListener("input", e=>{ state.background = e.target.value; runPipeline(); });
+  document.getElementById("themeDark").addEventListener("click", ()=>{
+    state.background = "#0c111d";
+    document.getElementById("bgColor").value = "#0c111d";
+    runPipeline();
+  });
+  document.getElementById("themeLight").addEventListener("click", ()=>{
+    state.background = "#f4f6fb";
+    document.getElementById("bgColor").value = "#f4f6fb";
+    if (state.styles){
+      state.styles.forEach(s=>{ if (s.labelColor==="#e8ecf7") s.labelColor = "#1a2036"; });
+    }
+    renderLegend();
+    runPipeline();
+  });
+
+  document.getElementById("exportStyle").addEventListener("click", ()=>{
+    if (!state.rawFeatures){ setStyleStatus("Load data first.", "err"); return; }
+    const payload = {
+      background: state.background,
+      order: state.order.map(idx=>state.rawFeatures[idx].name),
+      layers: state.rawFeatures.map((f,i)=>({name:f.name, geomType:f.geomType, style:state.styles[i]}))
+    };
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "schemify-style.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setStyleStatus("Style exported.", "ok");
+  });
+
+  const importStyleInput = document.getElementById("importStyleInput");
+  document.getElementById("importStyleBtn").addEventListener("click", ()=>importStyleInput.click());
+  importStyleInput.addEventListener("change", e=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try{
+        const payload = JSON.parse(ev.target.result);
+        if (!state.rawFeatures){ setStyleStatus("Load data before importing a style.", "err"); return; }
+        if (payload.background) { state.background = payload.background; document.getElementById("bgColor").value = payload.background; }
+        if (Array.isArray(payload.layers)){
+          payload.layers.forEach(entry=>{
+            const match = state.rawFeatures.find(f=>f.name===entry.name);
+            if (match) state.styles[match.idx] = Object.assign(defaultStyleFor(match), entry.style||{});
+          });
+        }
+        if (Array.isArray(payload.order)){
+          const byName = new Map(state.rawFeatures.map(f=>[f.name,f.idx]));
+          const newOrder = payload.order.map(n=>byName.get(n)).filter(v=>v!==undefined);
+          state.rawFeatures.forEach(f=>{ if (!newOrder.includes(f.idx)) newOrder.push(f.idx); });
+          if (newOrder.length===state.order.length) state.order = newOrder;
+        }
+        renderLegend();
+        runPipeline();
+        setStyleStatus("Style imported.", "ok");
+      }catch(err){
+        setStyleStatus("Invalid style file: "+err.message, "err");
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // ---------- Sample data ----------
+  const SAMPLE_TRANSIT = {
+    type:"FeatureCollection",
+    features:[
+      {type:"Feature", properties:{name:"Red Line", stroke:"#ff6b6b"}, geometry:{type:"LineString", coordinates:[
+        [-73.99,40.700],[-73.985,40.706],[-73.978,40.710],[-73.965,40.715],[-73.950,40.718],[-73.935,40.716]
+      ]}},
+      {type:"Feature", properties:{name:"Blue Line", stroke:"#5b8cff"}, geometry:{type:"LineString", coordinates:[
+        [-73.995,40.680],[-73.985,40.706],[-73.975,40.690],[-73.960,40.675],[-73.945,40.670]
+      ]}},
+      {type:"Feature", properties:{name:"Green Line", stroke:"#4ade80"}, geometry:{type:"LineString", coordinates:[
+        [-73.978,40.710],[-73.972,40.700],[-73.975,40.690],[-73.968,40.678],[-73.955,40.665]
+      ]}},
+      {type:"Feature", properties:{name:"Central Station"}, geometry:{type:"Point", coordinates:[-73.985,40.706]}},
+      {type:"Feature", properties:{name:"Junction Park"}, geometry:{type:"Point", coordinates:[-73.975,40.690]}},
+      {type:"Feature", properties:{name:"Eastview"}, geometry:{type:"Point", coordinates:[-73.935,40.716]}},
+      {type:"Feature", properties:{name:"Westgate"}, geometry:{type:"Point", coordinates:[-73.945,40.670]}}
+    ]
+  };
+
+  const SAMPLE_MIXED = {
+    type:"FeatureCollection",
+    features:[
+      {type:"Feature", properties:{name:"Riverside District", stroke:"#38d9c9"}, geometry:{type:"Polygon", coordinates:[[
+        [-73.99,40.70],[-73.982,40.703],[-73.976,40.700],[-73.972,40.693],[-73.978,40.686],[-73.988,40.688],[-73.99,40.70]
+      ]]}},
+      {type:"Feature", properties:{name:"Old Town", stroke:"#ffb454"}, geometry:{type:"Polygon", coordinates:[[
+        [-73.965,40.712],[-73.955,40.716],[-73.947,40.712],[-73.949,40.704],[-73.960,40.702],[-73.965,40.712]
+      ]]}},
+      {type:"Feature", properties:{name:"Main Road", stroke:"#a78bfa"}, geometry:{type:"LineString", coordinates:[
+        [-73.995,40.695],[-73.982,40.703],[-73.965,40.712],[-73.945,40.715]
+      ]}},
+      {type:"Feature", properties:{name:"City Hall"}, geometry:{type:"Point", coordinates:[-73.978,40.699]}},
+      {type:"Feature", properties:{name:"Market Square"}, geometry:{type:"Point", coordinates:[-73.957,40.709]}}
+    ]
+  };
+
+  document.getElementById("sampleTransit").addEventListener("click", ()=>loadGeoJSON(SAMPLE_TRANSIT));
+  document.getElementById("sampleMixed").addEventListener("click", ()=>loadGeoJSON(SAMPLE_MIXED));
+
+})();
+</script>
+</body>
+</html>
