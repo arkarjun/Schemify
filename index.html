@@ -113,14 +113,31 @@
   .helpbox b{color:var(--text);}
   details summary{cursor:pointer; font-size:12px; color:var(--accent); user-select:none;}
   .footer-note{font-size:11px; color:var(--muted); padding:0 2px;}
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand img{height:36px; width:auto; display:block; flex-shrink:0;}
+  .phtools{display:flex; align-items:center; gap:4px;}
+  .phtools button{padding:2px 6px; font-size:12px; line-height:1.4;}
+  .panel svg{cursor:grab;}
+  .panel svg.grabbing{cursor:grabbing;}
+  .panel.collapsed{display:none;}
+  .panels.oneCol{grid-template-columns:1fr;}
+  .appfooter{
+    text-align:center; padding:18px 16px 22px; font-size:12px; color:var(--muted);
+  }
+  .appfooter a{color:var(--accent); text-decoration:none;}
+  .appfooter a:hover{text-decoration:underline;}
+  .appfooter .heart{color:#ff6b8b;}
 </style>
 </head>
 <body>
 
 <header>
-  <div>
-    <h1>Schemify</h1>
-    <p>An Open Source Schematization Tool by GeoMinds</p>
+  <div class="brand">
+    <img src="schemify_logo.svg" alt="Schemify logo">
+    <div>
+      <h1>Schemify</h1>
+      <p>An Open Source Schematization Tool by GeoMinds</p>
+    </div>
   </div>
   <div class="footer-note">Generate + Style</div>
 </header>
@@ -222,11 +239,29 @@
   <div class="main">
     <div class="panels" id="panelsGrid">
       <div class="panel" id="origPanel">
-        <div class="ph"><span>Original (projected &amp; simplified)</span><span class="tag raw">RAW</span></div>
+        <div class="ph">
+          <span>Original (projected &amp; simplified)</span>
+          <div class="phtools">
+            <button class="iconbtn" data-panel="orig" data-act="zoomout" title="Zoom out">&minus;</button>
+            <button class="iconbtn" data-panel="orig" data-act="zoomin" title="Zoom in">&plus;</button>
+            <button class="iconbtn" data-panel="orig" data-act="reset" title="Reset zoom to full extent">&#8635;</button>
+            <button class="iconbtn" data-panel="orig" data-act="collapse" title="Expand to full width">&#9974;</button>
+            <span class="tag raw">RAW</span>
+          </div>
+        </div>
         <div class="panelwrap"><div id="origHolder" class="empty">Upload a GeoJSON file to begin</div></div>
       </div>
-      <div class="panel">
-        <div class="ph"><span>Schematic output</span><span class="tag schem">SCHEMATIC</span></div>
+      <div class="panel" id="schemPanel">
+        <div class="ph">
+          <span>Schematic output</span>
+          <div class="phtools">
+            <button class="iconbtn" data-panel="schem" data-act="zoomout" title="Zoom out">&minus;</button>
+            <button class="iconbtn" data-panel="schem" data-act="zoomin" title="Zoom in">&plus;</button>
+            <button class="iconbtn" data-panel="schem" data-act="reset" title="Reset zoom to full extent">&#8635;</button>
+            <button class="iconbtn" data-panel="schem" data-act="collapse" title="Expand to full width">&#9974;</button>
+            <span class="tag schem">SCHEMATIC</span>
+          </div>
+        </div>
         <div class="panelwrap"><div id="schemHolder" class="empty">&mdash;</div></div>
       </div>
     </div>
@@ -238,6 +273,10 @@
     </div>
   </div>
 </div>
+
+<footer class="appfooter">
+  Made with <span class="heart">&#10084;</span> by <a href="https://geominds.in" target="_blank" rel="noopener">GeoMinds</a>
+</footer>
 
 <script>
 (function(){
@@ -529,7 +568,89 @@
   }
 
   function makeSvgShell(w,h){
-    return svgEl("svg", {viewBox:`0 0 ${w} ${h}`, xmlns:SVGNS});
+    const svg = svgEl("svg", {viewBox:`0 0 ${w} ${h}`, xmlns:SVGNS});
+    svg.dataset.vbW = w; svg.dataset.vbH = h;
+    return svg;
+  }
+
+  // ---------- Zoom / pan ----------
+  const zoomState = { orig: {scale:1,x:0,y:0}, schem: {scale:1,x:0,y:0} };
+  const ZOOM_MIN = 0.2, ZOOM_MAX = 10;
+
+  function resetZoom(which){
+    if (which==="both" || which==="orig") zoomState.orig = {scale:1,x:0,y:0};
+    if (which==="both" || which==="schem") zoomState.schem = {scale:1,x:0,y:0};
+  }
+
+  function applyZoom(svg, key){
+    if (!svg) return;
+    const g = svg.querySelector(".zoomG");
+    if (!g) return;
+    const z = zoomState[key];
+    g.setAttribute("transform", `translate(${z.x},${z.y}) scale(${z.scale})`);
+  }
+
+  function zoomByFactor(key, factor){
+    const svg = key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg;
+    const z = zoomState[key];
+    const w = svg ? parseFloat(svg.dataset.vbW) : 900;
+    const h = svg ? parseFloat(svg.dataset.vbH) : 460;
+    zoomAt(key, w/2, h/2, factor);
+  }
+
+  // (cx,cy) is the fixed point, in the svg's own viewBox coordinate space (post current transform)
+  function zoomAt(key, cx, cy, factor){
+    const z = zoomState[key];
+    const newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z.scale*factor));
+    const ratio = newScale / z.scale;
+    // keep the point under (cx,cy) fixed: world point = (cx - z.x)/z.scale
+    const wx = (cx - z.x)/z.scale, wy = (cy - z.y)/z.scale;
+    z.scale = newScale;
+    z.x = cx - wx*newScale;
+    z.y = cy - wy*newScale;
+    const svg = key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg;
+    applyZoom(svg, key);
+  }
+
+  function panBy(key, dx, dy){
+    const z = zoomState[key];
+    z.x += dx; z.y += dy;
+    const svg = key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg;
+    applyZoom(svg, key);
+  }
+
+  function svgPointFromEvent(svg, clientX, clientY){
+    const rect = svg.getBoundingClientRect();
+    const w = parseFloat(svg.dataset.vbW), h = parseFloat(svg.dataset.vbH);
+    return {
+      x: (clientX - rect.left) * (w/rect.width),
+      y: (clientY - rect.top) * (h/rect.height)
+    };
+  }
+
+  function wireZoomInteractions(svg, key){
+    svg.addEventListener("wheel", e=>{
+      e.preventDefault();
+      const p = svgPointFromEvent(svg, e.clientX, e.clientY);
+      const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+      zoomAt(key, p.x, p.y, factor);
+    }, {passive:false});
+
+    let dragging = false, lastX = 0, lastY = 0;
+    svg.addEventListener("mousedown", e=>{
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      svg.classList.add("grabbing");
+    });
+    window.addEventListener("mousemove", e=>{
+      if (!dragging) return;
+      const rect = svg.getBoundingClientRect();
+      const w = parseFloat(svg.dataset.vbW);
+      const scaleFactor = w/rect.width;
+      const dx = (e.clientX-lastX)*scaleFactor, dy = (e.clientY-lastY)*scaleFactor;
+      lastX = e.clientX; lastY = e.clientY;
+      panBy(key, dx, dy);
+    });
+    window.addEventListener("mouseup", ()=>{ dragging=false; svg.classList.remove("grabbing"); });
   }
 
   function drawNodeShape(svg, shape, cx, cy, r, fill, stroke, strokeWidth){
@@ -545,20 +666,25 @@
     origDraw.forEach(fd=>{ fd.lines.forEach(l=>l.forEach(p=>allPts.push(p))); fd.points.forEach(p=>allPts.push(p)); });
     const t = fitTransform(allPts, W, H, pad);
     const svg = makeSvgShell(W,H);
+    const g = svgEl("g", {class:"zoomG"});
+    svg.appendChild(g);
     origDraw.forEach(fd=>{
       const feat = feats[fd.featureIdx];
       fd.lines.forEach((line, li)=>{
         if (line.length<2) return;
         const d = line.map((p,i)=> (i===0?"M":"L")+toScreen(t,p[0],p[1]).join(","));
         if (fd.closed[li]) d.push("Z");
-        svg.appendChild(svgEl("path",{d:d.join(" "), fill: fd.closed[li]? feat.color+"22":"none", stroke:"#7d88ad", "stroke-width":1.1, "stroke-linejoin":"round", "stroke-linecap":"round"}));
+        g.appendChild(svgEl("path",{d:d.join(" "), fill: fd.closed[li]? feat.color+"22":"none", stroke:"#7d88ad", "stroke-width":1.1, "stroke-linejoin":"round", "stroke-linecap":"round"}));
       });
       fd.points.forEach(p=>{
         const [px,py]=toScreen(t,p[0],p[1]);
-        svg.appendChild(svgEl("circle",{cx:px,cy:py,r:3,fill:"#7d88ad"}));
+        g.appendChild(svgEl("circle",{cx:px,cy:py,r:3,fill:"#7d88ad"}));
       });
     });
     mount("origHolder", svg);
+    window.__lastOriginalSvg = svg;
+    applyZoom(svg, "orig");
+    wireZoomInteractions(svg, "orig");
   }
 
   function renderSchematic(nodes, lineSequences, pointNodes, feats, W, H, pad){
@@ -566,6 +692,8 @@
     const t = fitTransform(allPts, W, H, pad);
     const svg = makeSvgShell(W,H);
     svg.appendChild(svgEl("rect",{x:0,y:0,width:W,height:H,fill:state.background}));
+    const g = svgEl("g", {class:"zoomG"});
+    svg.appendChild(g);
 
     const order = state.order.filter(idx=>feats[idx] && feats[idx].visible);
 
@@ -582,9 +710,9 @@
         const da = dashArray(style.dash, style.strokeWidth);
         if (seq.closed){
           const fillHex = style.fillOpacity>0 ? style.color + Math.round(style.fillOpacity*255).toString(16).padStart(2,"0") : "none";
-          svg.appendChild(svgEl("path",{d, fill:fillHex, stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
+          g.appendChild(svgEl("path",{d, fill:fillHex, stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
         } else {
-          svg.appendChild(svgEl("path",{d, fill:"none", stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
+          g.appendChild(svgEl("path",{d, fill:"none", stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
         }
       });
     });
@@ -606,7 +734,7 @@
             shown.add(id);
             const [px,py]=toScreen(t,node.x,node.y);
             const r = isJunction ? style.nodeRadius*1.05 : style.nodeRadius*0.85;
-            drawNodeShape(svg, style.nodeShape, px, py, r, state.background, style.color, 2);
+            drawNodeShape(g, style.nodeShape, px, py, r, state.background, style.color, 2);
           }
         });
       });
@@ -620,7 +748,7 @@
       pts.forEach(({node})=>{
         const [px,py]=toScreen(t,node.x,node.y);
         if (style.showNodes){
-          drawNodeShape(svg, style.nodeShape, px, py, style.nodeRadius, style.color, state.background, 1.5);
+          drawNodeShape(g, style.nodeShape, px, py, style.nodeRadius, style.color, state.background, 1.5);
         }
       });
     });
@@ -638,7 +766,7 @@
           const [px,py]=toScreen(t,node.x,node.y);
           const txt = svgEl("text",{x:px+style.nodeRadius+3,y:py+style.labelSize*0.35,"font-size":style.labelSize,fill:style.labelColor,"font-family":"inherit"});
           txt.textContent = rawName;
-          svg.appendChild(txt);
+          g.appendChild(txt);
         });
       } else {
         const seqs = lineSequences.filter(s=>s.featureIdx===fIdx);
@@ -656,12 +784,14 @@
           const [px,py] = toScreen(t, lx, ly);
           const txt = svgEl("text",{x:px+6,y:py-6,"font-size":style.labelSize,fill:style.labelColor,"font-family":"inherit"});
           txt.textContent = rawName;
-          svg.appendChild(txt);
+          g.appendChild(txt);
         });
       }
     });
 
     mount("schemHolder", svg);
+    applyZoom(svg, "schem");
+    wireZoomInteractions(svg, "schem");
     return svg;
   }
 
@@ -708,7 +838,7 @@
       `;
       row.appendChild(main);
 
-      main.querySelector(".visToggle").addEventListener("change", e=>{ f.visible = e.target.checked; runPipeline(); });
+      main.querySelector(".visToggle").addEventListener("change", e=>{ f.visible = e.target.checked; resetZoom("both"); runPipeline(); });
       main.querySelector(".colorPick").addEventListener("input", e=>{ style.color = e.target.value; runPipeline(); });
       main.querySelector(".name").addEventListener("click", ()=>{ expandedLayer = (expandedLayer===fIdx?null:fIdx); renderLegend(); });
       main.querySelector(".expandBtn").addEventListener("click", ()=>{ expandedLayer = (expandedLayer===fIdx?null:fIdx); renderLegend(); });
@@ -816,6 +946,7 @@
         background: document.getElementById("bgColor").value || "#0c111d"
       };
       expandedLayer = null;
+      resetZoom("both");
       renderLegend();
       runPipeline();
       setStatus(`Loaded ${feats.length} feature(s).`, "ok");
@@ -860,17 +991,20 @@
 
   document.getElementById("simplify").addEventListener("input", e=>{
     document.getElementById("simplifyVal").textContent = parseFloat(e.target.value).toFixed(1)+"%";
+    resetZoom("both");
     debouncedRun();
   });
   document.getElementById("iterations").addEventListener("input", e=>{
     document.getElementById("iterVal").textContent = e.target.value;
+    resetZoom("schem");
     debouncedRun();
   });
   document.getElementById("minlen").addEventListener("input", e=>{
     document.getElementById("minlenVal").textContent = e.target.value+"%";
+    resetZoom("schem");
     debouncedRun();
   });
-  document.getElementById("styleMode").addEventListener("change", debouncedRun);
+  document.getElementById("styleMode").addEventListener("change", ()=>{ resetZoom("schem"); debouncedRun(); });
 
   document.getElementById("downloadSvg").addEventListener("click", ()=>{
     const svg = window.__lastSchematicSvg;
@@ -893,6 +1027,33 @@
   const panelStyle = document.getElementById("panelStyle");
   const panelsGrid = document.getElementById("panelsGrid");
   const origPanel = document.getElementById("origPanel");
+  const schemPanel = document.getElementById("schemPanel");
+
+  // layoutMode: 'split' (default, both panels) | 'orig' (original full width) | 'schem' (schematic full width)
+  let layoutMode = "split";
+
+  function applyLayout(){
+    if (currentMode==="style"){
+      // Style mode always focuses on the schematic panel alone.
+      origPanel.classList.add("collapsed");
+      schemPanel.classList.remove("collapsed");
+      panelsGrid.classList.add("oneCol");
+      return;
+    }
+    panelsGrid.classList.toggle("oneCol", layoutMode!=="split");
+    origPanel.classList.toggle("collapsed", layoutMode==="schem");
+    schemPanel.classList.toggle("collapsed", layoutMode==="orig");
+    updateCollapseButtons();
+  }
+
+  function updateCollapseButtons(){
+    document.querySelectorAll('.phtools button[data-act="collapse"]').forEach(btn=>{
+      const panel = btn.getAttribute("data-panel");
+      const soleVisible = layoutMode===panel;
+      btn.innerHTML = soleVisible ? "&#9703;" : "&#9974;";
+      btn.title = soleVisible ? "Restore split view" : "Expand to full width";
+    });
+  }
 
   function setMode(m){
     currentMode = m;
@@ -900,12 +1061,31 @@
     modeStyle.classList.toggle("active", m==="style");
     panelGenerate.style.display = m==="generate" ? "" : "none";
     panelStyle.style.display = m==="style" ? "" : "none";
-    origPanel.style.display = m==="style" ? "none" : "";
     panelsGrid.classList.toggle("styleMode", m==="style");
+    applyLayout();
     if (state.rawFeatures) runPipeline();
   }
   modeGenerate.addEventListener("click", ()=>setMode("generate"));
   modeStyle.addEventListener("click", ()=>setMode("style"));
+
+  // ---------- Wiring: panel toolbars (zoom + collapse) ----------
+  document.querySelectorAll(".phtools button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const key = btn.getAttribute("data-panel");
+      const act = btn.getAttribute("data-act");
+      if (act==="zoomin") zoomByFactor(key, 1.3);
+      else if (act==="zoomout") zoomByFactor(key, 1/1.3);
+      else if (act==="reset"){
+        resetZoom(key);
+        applyZoom(key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg, key);
+      }
+      else if (act==="collapse"){
+        layoutMode = (layoutMode===key) ? "split" : key;
+        applyLayout();
+      }
+    });
+  });
+  applyLayout();
 
   // ---------- Wiring: style panel ----------
   document.getElementById("bgColor").addEventListener("input", e=>{ state.background = e.target.value; runPipeline(); });
