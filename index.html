@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Schemify — An Open Source Schematization Tool by GeoMinds</title>
+<title>Schemify — An Open Source Schematization Tool by Geominds</title>
 <style>
   :root{
     --bg:#0f1420; --panel:#161d2e; --panel2:#1c2438; --border:#2a3350;
@@ -21,10 +21,33 @@
   }
   header h1{font-size:17px; margin:0; font-weight:600;}
   header p{margin:2px 0 0; font-size:12.5px; color:var(--muted);}
-  .layout{display:flex; gap:16px; padding:16px; align-items:flex-start; flex-wrap:wrap;}
-  .sidebar{
-    width:320px; flex-shrink:0; display:flex; flex-direction:column; gap:14px;
+  .layout{display:flex; gap:0; padding:16px; align-items:flex-start;}
+  .iconrail{
+    flex-shrink:0; width:52px; display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:2px 0; margin-right:12px;
   }
+  .railBtn{
+    width:44px; height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    border-radius:9px; position:relative; font-size:17px; padding:0; gap:1px;
+  }
+  .railBtn .railNum{
+    position:absolute; top:-4px; right:-4px; background:var(--panel2); border:1px solid var(--border);
+    border-radius:50%; width:15px; height:15px; font-size:9px; display:flex; align-items:center; justify-content:center;
+    color:var(--muted);
+  }
+  .railBtn .railLabel{font-size:8.5px; letter-spacing:.02em;}
+  .railBtn.active{background:var(--accent); border-color:var(--accent); color:#0b1020; font-weight:600;}
+  .railBtn.active .railNum{background:#0b1020; color:var(--accent); border-color:#0b1020;}
+  .drawer{
+    flex-shrink:0; width:0; overflow:hidden; transition:width .2s ease; margin-right:0;
+  }
+  .drawer.open{width:320px; margin-right:16px;}
+  .drawerInner{
+    width:320px; display:flex; flex-direction:column; gap:14px;
+    position:sticky; top:16px; max-height:calc(100vh - 32px); overflow-y:auto; padding-right:2px;
+  }
+  .drawerInner section{display:none;}
+  .drawerInner section.active{display:flex; flex-direction:column; gap:14px;}
   .card{
     background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
     padding:14px;
@@ -63,9 +86,6 @@
   .status{font-size:12px; margin-top:8px; min-height:16px;}
   .status.err{color:var(--err);}
   .status.ok{color:var(--accent2);}
-  .modeSwitch{display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;}
-  .modeSwitch button{flex:1; border:none; border-radius:0; background:var(--panel);}
-  .modeSwitch button.active{background:var(--accent); color:#0b1020; font-weight:600;}
   .layer-row{
     border-radius:6px; margin-bottom:3px;
   }
@@ -73,6 +93,7 @@
     display:flex; align-items:center; gap:6px; font-size:12px; padding:5px 2px;
   }
   .layer-row-main:hover{background:var(--panel2);}
+  .layer-row-main.selected{background:rgba(91,140,255,.14); box-shadow:inset 2px 0 0 var(--accent);}
   .layer-row-main .name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;}
   .layer-row-main .type{color:var(--muted); font-size:10px;}
   .layer-order-btns{display:flex; flex-direction:column; gap:1px;}
@@ -89,7 +110,6 @@
   .chk-field{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text); margin:5px 0;}
   .main{flex:1; min-width:340px; display:flex; flex-direction:column; gap:14px;}
   .panels{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
-  .panels.styleMode{grid-template-columns:1fr;}
   @media (max-width:880px){ .panels{grid-template-columns:1fr;} }
   .panel{
     background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
@@ -105,7 +125,6 @@
   .tag.raw{background:#2a3350; color:#a9b4d6;}
   .tag.schem{background:rgba(91,140,255,.18); color:var(--accent);}
   svg{width:100%; height:460px; display:block; background:#0c111d;}
-  .panels.styleMode svg{height:560px;}
   .empty{
     display:flex; align-items:center; justify-content:center; height:460px; color:var(--muted); font-size:13px; text-align:center; padding:20px;
   }
@@ -113,12 +132,15 @@
   .helpbox b{color:var(--text);}
   details summary{cursor:pointer; font-size:12px; color:var(--accent); user-select:none;}
   .footer-note{font-size:11px; color:var(--muted); padding:0 2px;}
+  .hint{font-size:10.5px; color:var(--muted); margin:2px 0 0; line-height:1.4;}
+  .section-label{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:0 2px;}
   .brand{display:flex; align-items:center; gap:10px;}
   .brand img{height:36px; width:auto; display:block; flex-shrink:0;}
   .phtools{display:flex; align-items:center; gap:4px;}
   .phtools button{padding:2px 6px; font-size:12px; line-height:1.4;}
   .panel svg{cursor:grab;}
   .panel svg.grabbing{cursor:grabbing;}
+  .panel svg [data-fidx]{cursor:pointer;}
   .panel.collapsed{display:none;}
   .panels.oneCol{grid-template-columns:1fr;}
   .appfooter{
@@ -127,6 +149,17 @@
   .appfooter a{color:var(--accent); text-decoration:none;}
   .appfooter a:hover{text-decoration:underline;}
   .appfooter .heart{color:#ff6b8b;}
+  .tipbanner{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:rgba(91,140,255,.10); border:1px solid rgba(91,140,255,.35); border-radius:8px;
+    padding:9px 12px; font-size:12px; color:var(--text); line-height:1.5;
+  }
+  .tipbanner button{background:none; border:none; color:var(--muted); font-size:16px; padding:0 4px; line-height:1;}
+  .tipbanner button:hover{color:var(--text); background:none;}
+  .syncbar{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .syncbar button.active{background:var(--accent); border-color:var(--accent); color:#0b1020; font-weight:600;}
+  .layer-body .grp.segGrp{background:rgba(91,140,255,.08); border:1px solid rgba(91,140,255,.3); border-radius:6px; padding:8px; margin:-2px 0 8px;}
+  .layer-body .grp.segGrp .grp-title{color:var(--accent);}
 </style>
 </head>
 <body>
@@ -136,107 +169,132 @@
     <img src="schemify_logo.svg" alt="Schemify logo">
     <div>
       <h1>Schemify</h1>
-      <p>An Open Source Schematization Tool by GeoMinds</p>
+      <p>An Open Source Schematization Tool by Geominds</p>
     </div>
   </div>
   <div class="footer-note">Generate + Style</div>
 </header>
 
 <div class="layout">
-  <div class="sidebar">
+  <div class="iconrail">
+    <button class="railBtn" id="railData" data-sec="data" title="Data">
+      <span>&#8593;</span><span class="railNum">1</span>
+    </button>
+    <button class="railBtn" id="railShape" data-sec="shape" title="Shape">
+      <span>&#9671;</span><span class="railNum">2</span>
+    </button>
+    <button class="railBtn" id="railStyle" data-sec="style" title="Style &amp; layers">
+      <span>&#9998;</span><span class="railNum">3</span>
+    </button>
+    <button class="railBtn" id="railHelp" data-sec="help" title="Help">
+      <span>?</span>
+    </button>
+  </div>
 
-    <div class="card">
-      <h2>1. Data</h2>
-      <div id="dropzone" class="dropzone">
-        <div><b>Click to upload</b> or drag a .geojson / .json file here</div>
-      </div>
-      <input type="file" id="fileInput" accept=".json,.geojson,application/geo+json,application/json">
-      <div class="rowbtns">
-        <button id="sampleTransit">Load transit sample</button>
-        <button id="sampleMixed">Load mixed sample</button>
-      </div>
-      <details style="margin-top:10px;">
-        <summary>Or paste GeoJSON text</summary>
-        <textarea id="pasteArea" placeholder="{ &quot;type&quot;: &quot;FeatureCollection&quot;, ... }"></textarea>
-        <div class="rowbtns"><button id="parsePaste" class="primary">Parse pasted JSON</button></div>
-      </details>
-      <div id="status" class="status"></div>
-    </div>
-
-    <div class="modeSwitch">
-      <button id="modeGenerate" class="active">Generate</button>
-      <button id="modeStyle">Style</button>
-    </div>
-
-    <div id="panelGenerate">
-      <div class="card">
-        <h2>2. Schematization style</h2>
-        <label class="field">Angle snapping</label>
-        <select id="styleMode">
-          <option value="8" selected>Octilinear (45&deg;) &mdash; classic transit-map look</option>
-          <option value="4">Orthogonal (90&deg;) &mdash; blocky / circuit-board look</option>
-          <option value="0">Off &mdash; simplify only, keep real angles</option>
-        </select>
-
-        <label class="field">Simplify tolerance <span class="val" id="simplifyVal">1.5%</span></label>
-        <input type="range" id="simplify" min="0" max="6" step="0.1" value="1.5">
-
-        <label class="field">Straightening strength <span class="val" id="iterVal">70</span></label>
-        <input type="range" id="iterations" min="0" max="150" step="5" value="70">
-
-        <label class="field">Minimum segment length <span class="val" id="minlenVal">55%</span></label>
-        <input type="range" id="minlen" min="10" max="100" step="5" value="55">
-      </div>
-    </div>
-
-    <div id="panelStyle" style="display:none;">
-      <div class="card">
-        <h2>Background</h2>
-        <div class="inline-field">
-          <label>Canvas color</label>
-          <input type="color" id="bgColor" value="#0c111d">
+  <div class="drawer" id="drawer">
+    <div class="drawerInner">
+      <section data-sec="data">
+        <div class="card">
+          <h2>1. Data</h2>
+          <div id="dropzone" class="dropzone">
+            <div><b>Click to upload</b> or drag a .geojson / .json file here</div>
+          </div>
+          <input type="file" id="fileInput" accept=".json,.geojson,application/geo+json,application/json">
+          <div class="rowbtns">
+            <button id="sampleTransit">Load transit sample</button>
+            <button id="sampleMixed">Load mixed sample</button>
+          </div>
+          <details style="margin-top:10px;">
+            <summary>Or paste GeoJSON text</summary>
+            <textarea id="pasteArea" placeholder="{ &quot;type&quot;: &quot;FeatureCollection&quot;, ... }"></textarea>
+            <div class="rowbtns"><button id="parsePaste" class="primary">Parse pasted JSON</button></div>
+          </details>
+          <div id="status" class="status"></div>
         </div>
-        <div class="rowbtns">
-          <button id="themeDark">Dark preset</button>
-          <button id="themeLight">Light preset</button>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Style preset</h2>
-        <div class="rowbtns">
-          <button id="exportStyle">Export style JSON</button>
-          <button id="importStyleBtn">Import style JSON</button>
-        </div>
-        <input type="file" id="importStyleInput" accept=".json" style="display:none;">
-        <div id="styleStatus" class="status"></div>
-      </div>
-    </div>
+      </section>
 
-    <div class="card">
-      <h2>Layers</h2>
-      <div id="legend">
-        <div class="footer-note">No data loaded yet.</div>
-      </div>
-    </div>
+      <section data-sec="shape">
+        <div class="card">
+          <h2>2. Shape</h2>
+          <label class="field" style="margin-top:0;">Angle snapping</label>
+          <select id="styleMode">
+            <option value="8" selected>Octilinear (45&deg;) &mdash; classic transit-map look</option>
+            <option value="4">Orthogonal (90&deg;) &mdash; blocky / circuit-board look</option>
+            <option value="0">Off &mdash; simplify only, keep real angles</option>
+          </select>
 
-    <div class="card helpbox">
-      <details>
-        <summary>How this works / why octilinear?</summary>
-        <div style="margin-top:8px;">
-          Real geography is messy &mdash; wiggly roads, uneven spacing. A <b>schematic map</b> (think subway maps)
-          simplifies geometry, straightens lines, and snaps angles to a small set of directions (usually 45&deg; or 90&deg;)
-          so the result reads cleanly at a glance, at the cost of true geographic accuracy.<br><br>
-          This tool: simplifies each line/polygon (Douglas&ndash;Peucker), builds a graph of shared points,
-          then iteratively nudges nodes so edges align to the snapped angles while keeping relative topology.
-          At junctions with 3+ connections a perfect fit isn't always possible &mdash; this is a fast heuristic,
-          not a full constraint solver, so busy junctions may land a few degrees off-grid.<br><br>
-          Switch to the <b>Style</b> tab to recolor, re-weight, and relabel each layer once you're happy with the shape.
+          <label class="field">Simplify tolerance <span class="val" id="simplifyVal">1.5%</span></label>
+          <input type="range" id="simplify" min="0" max="6" step="0.1" value="1.5">
+          <div class="hint">Higher = fewer points, blockier shapes.</div>
+
+          <label class="field">Straightening strength <span class="val" id="iterVal">70</span></label>
+          <input type="range" id="iterations" min="0" max="150" step="5" value="70">
+          <div class="hint">Higher = straighter, more rigid layout; lower stays closer to the real shape.</div>
+
+          <label class="field">Minimum segment length <span class="val" id="minlenVal">55%</span></label>
+          <input type="range" id="minlen" min="10" max="100" step="5" value="55">
+          <div class="hint">Higher = fewer tiny, cluttered segments.</div>
         </div>
-      </details>
+      </section>
+
+      <section data-sec="style">
+        <div class="card">
+          <h2>Background</h2>
+          <div class="inline-field">
+            <label>Canvas color</label>
+            <input type="color" id="bgColor" value="#0c111d">
+          </div>
+          <div class="rowbtns">
+            <button id="themeDark">Dark preset</button>
+            <button id="themeLight">Light preset</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Style preset</h2>
+          <div class="rowbtns">
+            <button id="exportStyle">Export style JSON</button>
+            <button id="importStyleBtn">Import style JSON</button>
+          </div>
+          <input type="file" id="importStyleInput" accept=".json" style="display:none;">
+          <div id="styleStatus" class="status"></div>
+        </div>
+        <div class="card">
+          <h2>3. Layers</h2>
+          <div class="hint" style="margin:-6px 0 8px;">Click a layer here, or click any line/station on the map, to select and style it. Click a single stretch between two points to style just that segment.</div>
+          <div id="legend">
+            <div class="footer-note">No data loaded yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <section data-sec="help">
+        <div class="card helpbox">
+          <h2>How this works / why octilinear?</h2>
+          <div>
+            Real geography is messy &mdash; wiggly roads, uneven spacing. A <b>schematic map</b> (think subway maps)
+            simplifies geometry, straightens lines, and snaps angles to a small set of directions (usually 45&deg; or 90&deg;)
+            so the result reads cleanly at a glance, at the cost of true geographic accuracy.<br><br>
+            This tool: simplifies each line/polygon (Douglas&ndash;Peucker), builds a graph of shared points,
+            then iteratively nudges nodes so edges align to the snapped angles while keeping relative topology.
+            At junctions with 3+ connections a perfect fit isn't always possible &mdash; this is a fast heuristic,
+            not a full constraint solver, so busy junctions may land a few degrees off-grid.<br><br>
+            Open <b>Style &amp; layers</b> to recolor, re-weight, and relabel each layer &mdash; or a single segment &mdash; once you're happy with the shape.
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
   <div class="main">
+    <div class="tipbanner" id="tipBanner">
+      <span>&#128161; Use the icon rail on the left for Data / Shape / Style &amp; layers / Help. Click any line, station, or a stretch between two points on the map to select and style it. Toggle &#128279; Sync zoom to move both panels together.</span>
+      <button id="dismissTip" class="iconbtn" title="Dismiss">&times;</button>
+    </div>
+    <div class="syncbar card">
+      <button id="syncZoomBtn" class="iconbtn" title="Lock panel zoom/pan together">&#128279; Sync zoom</button>
+      <button id="resetViewBtn" class="iconbtn" title="Reset both panels to full extent">&#8635; Reset view</button>
+      <div class="footer-note" id="statsLine" style="margin-left:auto;">No data loaded.</div>
+    </div>
     <div class="panels" id="panelsGrid">
       <div class="panel" id="origPanel">
         <div class="ph">
@@ -244,7 +302,6 @@
           <div class="phtools">
             <button class="iconbtn" data-panel="orig" data-act="zoomout" title="Zoom out">&minus;</button>
             <button class="iconbtn" data-panel="orig" data-act="zoomin" title="Zoom in">&plus;</button>
-            <button class="iconbtn" data-panel="orig" data-act="reset" title="Reset zoom to full extent">&#8635;</button>
             <button class="iconbtn" data-panel="orig" data-act="collapse" title="Expand to full width">&#9974;</button>
             <span class="tag raw">RAW</span>
           </div>
@@ -257,25 +314,20 @@
           <div class="phtools">
             <button class="iconbtn" data-panel="schem" data-act="zoomout" title="Zoom out">&minus;</button>
             <button class="iconbtn" data-panel="schem" data-act="zoomin" title="Zoom in">&plus;</button>
-            <button class="iconbtn" data-panel="schem" data-act="reset" title="Reset zoom to full extent">&#8635;</button>
             <button class="iconbtn" data-panel="schem" data-act="collapse" title="Expand to full width">&#9974;</button>
+            <button class="iconbtn" id="downloadSvg" title="Download schematic as SVG">SVG</button>
+            <button class="iconbtn" id="downloadPng" title="Download schematic as PNG">PNG</button>
             <span class="tag schem">SCHEMATIC</span>
           </div>
         </div>
         <div class="panelwrap"><div id="schemHolder" class="empty">&mdash;</div></div>
       </div>
     </div>
-    <div class="card" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-      <div class="footer-note" id="statsLine">No data loaded.</div>
-      <div class="rowbtns">
-        <button id="downloadSvg">Download schematic SVG</button>
-      </div>
-    </div>
   </div>
 </div>
 
 <footer class="appfooter">
-  Made with <span class="heart">&#10084;</span> by <a href="https://geominds.in" target="_blank" rel="noopener">GeoMinds</a>
+  Made with <span class="heart">&#10084;</span> by <a href="https://geominds.in" target="_blank" rel="noopener">Geominds</a>
 </footer>
 
 <script>
@@ -456,7 +508,8 @@
       nodeShape: "circle",
       showLabel: isPointish(feat.geomType),
       labelSize: 10.5,
-      labelColor: "#e8ecf7"
+      labelColor: "#e8ecf7",
+      segmentOverrides: {}
     };
   }
 
@@ -469,7 +522,23 @@
   // ---------- State ----------
   let state = { rawFeatures: null, lat0: 0, bbox: null, styles: [], order: [], background: "#0c111d" };
   let expandedLayer = null;
-  let currentMode = "generate";
+  let selectedLayer = null;
+  let selectedSegment = null; // {fIdx, segKey} | null
+  let activeSection = null; // 'data' | 'shape' | 'style' | 'help' | null
+
+  function segKey(a,b){ return a<b ? a+"_"+b : b+"_"+a; }
+  function effectiveSegStyle(style, key){
+    const ov = style.segmentOverrides && style.segmentOverrides[key];
+    return ov ? Object.assign({}, style, ov) : style;
+  }
+  // Node IDs are only stable across renders when the underlying graph doesn't
+  // change shape (i.e. simplify tolerance and layer visibility unchanged), so
+  // any segment overrides + the current segment selection must be cleared
+  // whenever those change, or overrides could silently attach to the wrong stretch.
+  function invalidateSegmentOverrides(){
+    if (state.styles) state.styles.forEach(s=>{ if (s) s.segmentOverrides = {}; });
+    if (selectedSegment){ selectedSegment = null; if (state.rawFeatures) renderLegend(); }
+  }
 
   function runPipeline(){
     if (!state.rawFeatures) return;
@@ -576,6 +645,9 @@
   // ---------- Zoom / pan ----------
   const zoomState = { orig: {scale:1,x:0,y:0}, schem: {scale:1,x:0,y:0} };
   const ZOOM_MIN = 0.2, ZOOM_MAX = 10;
+  let zoomSynced = true; // both panels share the same 900x460 viewBox, so mirroring is exact
+
+  function otherKey(key){ return key==="orig" ? "schem" : "orig"; }
 
   function resetZoom(which){
     if (which==="both" || which==="orig") zoomState.orig = {scale:1,x:0,y:0};
@@ -590,19 +662,22 @@
     g.setAttribute("transform", `translate(${z.x},${z.y}) scale(${z.scale})`);
   }
 
+  function applyZoomBoth(){
+    applyZoom(window.__lastOriginalSvg, "orig");
+    applyZoom(window.__lastSchematicSvg, "schem");
+  }
+
   function zoomByFactor(key, factor){
     const svg = key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg;
-    const z = zoomState[key];
     const w = svg ? parseFloat(svg.dataset.vbW) : 900;
     const h = svg ? parseFloat(svg.dataset.vbH) : 460;
     zoomAt(key, w/2, h/2, factor);
   }
 
   // (cx,cy) is the fixed point, in the svg's own viewBox coordinate space (post current transform)
-  function zoomAt(key, cx, cy, factor){
+  function _zoomAtSingle(key, cx, cy, factor){
     const z = zoomState[key];
     const newScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z.scale*factor));
-    const ratio = newScale / z.scale;
     // keep the point under (cx,cy) fixed: world point = (cx - z.x)/z.scale
     const wx = (cx - z.x)/z.scale, wy = (cy - z.y)/z.scale;
     z.scale = newScale;
@@ -612,11 +687,21 @@
     applyZoom(svg, key);
   }
 
-  function panBy(key, dx, dy){
+  function zoomAt(key, cx, cy, factor){
+    _zoomAtSingle(key, cx, cy, factor);
+    if (zoomSynced) _zoomAtSingle(otherKey(key), cx, cy, factor);
+  }
+
+  function _panBySingle(key, dx, dy){
     const z = zoomState[key];
     z.x += dx; z.y += dy;
     const svg = key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg;
     applyZoom(svg, key);
+  }
+
+  function panBy(key, dx, dy){
+    _panBySingle(key, dx, dy);
+    if (zoomSynced) _panBySingle(otherKey(key), dx, dy);
   }
 
   function svgPointFromEvent(svg, clientX, clientY){
@@ -636,9 +721,9 @@
       zoomAt(key, p.x, p.y, factor);
     }, {passive:false});
 
-    let dragging = false, lastX = 0, lastY = 0;
+    let dragging = false, lastX = 0, lastY = 0, moved = 0;
     svg.addEventListener("mousedown", e=>{
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      dragging = true; lastX = e.clientX; lastY = e.clientY; moved = 0;
       svg.classList.add("grabbing");
     });
     window.addEventListener("mousemove", e=>{
@@ -647,18 +732,35 @@
       const w = parseFloat(svg.dataset.vbW);
       const scaleFactor = w/rect.width;
       const dx = (e.clientX-lastX)*scaleFactor, dy = (e.clientY-lastY)*scaleFactor;
+      moved += Math.abs(e.clientX-lastX) + Math.abs(e.clientY-lastY);
       lastX = e.clientX; lastY = e.clientY;
       panBy(key, dx, dy);
     });
     window.addEventListener("mouseup", ()=>{ dragging=false; svg.classList.remove("grabbing"); });
+
+    // Click-to-select: a genuine click (not a drag) on a tagged feature selects
+    // its layer; clicking empty canvas deselects.
+    svg.addEventListener("click", e=>{
+      if (moved > 4) return;
+      const fidxAttr = e.target.getAttribute && e.target.getAttribute("data-fidx");
+      const segAttr = e.target.getAttribute && e.target.getAttribute("data-seg");
+      if (fidxAttr!==null && fidxAttr!==undefined && segAttr){
+        selectSegment(parseInt(fidxAttr,10), segAttr);
+      } else {
+        selectFeature(fidxAttr!==null && fidxAttr!==undefined ? parseInt(fidxAttr,10) : null);
+      }
+    });
   }
 
   function drawNodeShape(svg, shape, cx, cy, r, fill, stroke, strokeWidth){
+    let el;
     if (shape==="square"){
-      svg.appendChild(svgEl("rect",{x:cx-r,y:cy-r,width:r*2,height:r*2,fill,stroke,"stroke-width":strokeWidth}));
+      el = svgEl("rect",{x:cx-r,y:cy-r,width:r*2,height:r*2,fill,stroke,"stroke-width":strokeWidth});
     } else {
-      svg.appendChild(svgEl("circle",{cx,cy,r,fill,stroke,"stroke-width":strokeWidth}));
+      el = svgEl("circle",{cx,cy,r,fill,stroke,"stroke-width":strokeWidth});
     }
+    svg.appendChild(el);
+    return el;
   }
 
   function renderOriginal(origDraw, feats, W, H, pad){
@@ -674,11 +776,11 @@
         if (line.length<2) return;
         const d = line.map((p,i)=> (i===0?"M":"L")+toScreen(t,p[0],p[1]).join(","));
         if (fd.closed[li]) d.push("Z");
-        g.appendChild(svgEl("path",{d:d.join(" "), fill: fd.closed[li]? feat.color+"22":"none", stroke:"#7d88ad", "stroke-width":1.1, "stroke-linejoin":"round", "stroke-linecap":"round"}));
+        g.appendChild(svgEl("path",{d:d.join(" "), fill: fd.closed[li]? feat.color+"22":"none", stroke:"#7d88ad", "stroke-width":1.1, "stroke-linejoin":"round", "stroke-linecap":"round", "data-fidx":fd.featureIdx}));
       });
       fd.points.forEach(p=>{
         const [px,py]=toScreen(t,p[0],p[1]);
-        g.appendChild(svgEl("circle",{cx:px,cy:py,r:3,fill:"#7d88ad"}));
+        g.appendChild(svgEl("circle",{cx:px,cy:py,r:3,fill:"#7d88ad","data-fidx":fd.featureIdx}));
       });
     });
     mount("origHolder", svg);
@@ -697,22 +799,61 @@
 
     const order = state.order.filter(idx=>feats[idx] && feats[idx].visible);
 
-    // 1) fills + strokes, in layer order
+    // 0) selection halo, drawn first so it sits beneath the selected feature
+    if (selectedLayer!==null && order.includes(selectedLayer)){
+      const selStyle = state.styles[selectedLayer];
+      if (selectedSegment && selectedSegment.fIdx===selectedLayer){
+        // halo just the selected segment/way
+        lineSequences.filter(s=>s.featureIdx===selectedLayer).forEach(seq=>{
+          const n = seq.nodeIds.length;
+          const segCount = seq.closed ? n : n-1;
+          for (let i=0;i<segCount;i++){
+            const aId = seq.nodeIds[i], bId = seq.nodeIds[(i+1)%n];
+            if (segKey(aId,bId)!==selectedSegment.segKey) continue;
+            const a = toScreen(t, nodes[aId].x, nodes[aId].y), b = toScreen(t, nodes[bId].x, nodes[bId].y);
+            g.appendChild(svgEl("path",{d:`M${a.join(",")} L${b.join(",")}`, fill:"none", stroke:"#5b8cff", "stroke-width":selStyle.strokeWidth+9, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":0.45}));
+          }
+        });
+      } else {
+        lineSequences.filter(s=>s.featureIdx===selectedLayer).forEach(seq=>{
+          if (seq.nodeIds.length<2) return;
+          const pts = seq.nodeIds.map(id=>toScreen(t, nodes[id].x, nodes[id].y));
+          let d = pts.map((p,i)=>(i===0?"M":"L")+p.join(",")).join(" ");
+          if (seq.closed) d += " Z";
+          g.appendChild(svgEl("path",{d, fill:"none", stroke:"#5b8cff", "stroke-width":selStyle.strokeWidth+7, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":0.35}));
+        });
+        pointNodes.filter(p=>p.featureIdx===selectedLayer).forEach(({node})=>{
+          const [px,py]=toScreen(t,node.x,node.y);
+          g.appendChild(svgEl("circle",{cx:px,cy:py,r:selStyle.nodeRadius+7,fill:"#5b8cff","fill-opacity":0.3}));
+        });
+      }
+    }
+
+    // 1) fills (whole ring) + per-segment strokes, in layer order.
+    // Each segment (the stretch between two consecutive nodes) is its own
+    // <path>, tagged data-fidx + data-seg, so it can be clicked and styled
+    // independently via style.segmentOverrides.
     order.forEach(fIdx=>{
       const feat = feats[fIdx];
       const style = state.styles[fIdx];
       const seqs = lineSequences.filter(s=>s.featureIdx===fIdx);
       seqs.forEach(seq=>{
         if (seq.nodeIds.length<2) return;
-        const pts = seq.nodeIds.map(id=>toScreen(t, nodes[id].x, nodes[id].y));
-        let d = pts.map((p,i)=>(i===0?"M":"L")+p.join(",")).join(" ");
-        if (seq.closed) d += " Z";
-        const da = dashArray(style.dash, style.strokeWidth);
+        const n = seq.nodeIds.length;
         if (seq.closed){
+          const pts = seq.nodeIds.map(id=>toScreen(t, nodes[id].x, nodes[id].y));
+          const d = pts.map((p,i)=>(i===0?"M":"L")+p.join(",")).join(" ") + " Z";
           const fillHex = style.fillOpacity>0 ? style.color + Math.round(style.fillOpacity*255).toString(16).padStart(2,"0") : "none";
-          g.appendChild(svgEl("path",{d, fill:fillHex, stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
-        } else {
-          g.appendChild(svgEl("path",{d, fill:"none", stroke:style.color, "stroke-width":style.strokeWidth, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":style.opacity, "stroke-dasharray":da}));
+          g.appendChild(svgEl("path",{d, fill:fillHex, stroke:"none", "data-fidx":fIdx}));
+        }
+        const segCount = seq.closed ? n : n-1;
+        for (let i=0;i<segCount;i++){
+          const aId = seq.nodeIds[i], bId = seq.nodeIds[(i+1)%n];
+          const key = segKey(aId,bId);
+          const segStyle = effectiveSegStyle(style, key);
+          const a = toScreen(t, nodes[aId].x, nodes[aId].y), b = toScreen(t, nodes[bId].x, nodes[bId].y);
+          const da = dashArray(segStyle.dash, segStyle.strokeWidth);
+          g.appendChild(svgEl("path",{d:`M${a.join(",")} L${b.join(",")}`, fill:"none", stroke:segStyle.color, "stroke-width":segStyle.strokeWidth, "stroke-linejoin":"round", "stroke-linecap":"round", "stroke-opacity":segStyle.opacity, "stroke-dasharray":da, "data-fidx":fIdx, "data-seg":key}));
         }
       });
     });
@@ -734,7 +875,8 @@
             shown.add(id);
             const [px,py]=toScreen(t,node.x,node.y);
             const r = isJunction ? style.nodeRadius*1.05 : style.nodeRadius*0.85;
-            drawNodeShape(g, style.nodeShape, px, py, r, state.background, style.color, 2);
+            const dotEl = drawNodeShape(g, style.nodeShape, px, py, r, state.background, style.color, 2);
+            dotEl.setAttribute("data-fidx", fIdx);
           }
         });
       });
@@ -748,7 +890,8 @@
       pts.forEach(({node})=>{
         const [px,py]=toScreen(t,node.x,node.y);
         if (style.showNodes){
-          drawNodeShape(g, style.nodeShape, px, py, style.nodeRadius, style.color, state.background, 1.5);
+          const markerEl = drawNodeShape(g, style.nodeShape, px, py, style.nodeRadius, style.color, state.background, 1.5);
+          markerEl.setAttribute("data-fidx", fIdx);
         }
       });
     });
@@ -802,12 +945,37 @@
   }
 
   function render(origDraw, feats, nodes, lineSequences, pointNodes, counts){
-    const W=900,H = currentMode==="style" ? 720 : 460, pad=34;
-    if (currentMode!=="style") renderOriginal(origDraw, feats, W,H,pad);
+    const W=900, H=460, pad=34;
+    renderOriginal(origDraw, feats, W,H,pad);
     const svg = renderSchematic(nodes, lineSequences, pointNodes, feats, W,H,pad);
     window.__lastSchematicSvg = svg;
     document.getElementById("statsLine").textContent =
       `${feats.filter(f=>f.visible).length}/${feats.length} layers visible · ${counts.nodeCount} nodes · ${counts.edgeCount} edges`;
+  }
+
+  // ---------- Selection (click-to-select on canvas) ----------
+  function selectFeature(fIdx){
+    selectedLayer = fIdx;
+    expandedLayer = fIdx;
+    selectedSegment = null;
+    if (fIdx !== null) showSection("style");
+    renderLegend();
+    runPipeline();
+    if (fIdx !== null){
+      const row = document.querySelector(".layer-row-main.selected");
+      if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({block:"nearest", behavior:"smooth"});
+    }
+  }
+
+  function selectSegment(fIdx, key){
+    selectedLayer = fIdx;
+    expandedLayer = fIdx;
+    selectedSegment = {fIdx, segKey:key};
+    showSection("style");
+    renderLegend();
+    runPipeline();
+    const row = document.querySelector(".layer-row-main.selected");
+    if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({block:"nearest", behavior:"smooth"});
   }
 
   // ---------- Legend / layer editor ----------
@@ -824,7 +992,7 @@
       row.className = "layer-row";
 
       const main = document.createElement("div");
-      main.className = "layer-row-main";
+      main.className = "layer-row-main" + (selectedLayer===fIdx ? " selected" : "");
       main.innerHTML = `
         <input type="checkbox" ${f.visible?"checked":""} class="visToggle" style="accent-color:${style.color}">
         <input type="color" class="colorPick" value="${style.color}">
@@ -838,10 +1006,17 @@
       `;
       row.appendChild(main);
 
-      main.querySelector(".visToggle").addEventListener("change", e=>{ f.visible = e.target.checked; resetZoom("both"); runPipeline(); });
+      main.querySelector(".visToggle").addEventListener("change", e=>{ f.visible = e.target.checked; invalidateSegmentOverrides(); resetZoom("both"); runPipeline(); });
       main.querySelector(".colorPick").addEventListener("input", e=>{ style.color = e.target.value; runPipeline(); });
-      main.querySelector(".name").addEventListener("click", ()=>{ expandedLayer = (expandedLayer===fIdx?null:fIdx); renderLegend(); });
-      main.querySelector(".expandBtn").addEventListener("click", ()=>{ expandedLayer = (expandedLayer===fIdx?null:fIdx); renderLegend(); });
+      const toggleThisLayer = ()=>{
+        const nowOpen = expandedLayer!==fIdx;
+        expandedLayer = nowOpen ? fIdx : null;
+        selectedLayer = nowOpen ? fIdx : null;
+        renderLegend();
+        runPipeline();
+      };
+      main.querySelector(".name").addEventListener("click", toggleThisLayer);
+      main.querySelector(".expandBtn").addEventListener("click", toggleThisLayer);
       const upBtn = main.querySelector(".upBtn");
       const downBtn = main.querySelector(".downBtn");
       if (upBtn) upBtn.addEventListener("click", ()=>{ moveLayer(pos,-1); });
@@ -868,6 +1043,34 @@
     const body = document.createElement("div");
     body.className = "layer-body";
     const line = isLineish(f.geomType), poly = isPolygonish(f.geomType), point = isPointish(f.geomType);
+
+    if ((line || poly) && selectedSegment && selectedSegment.fIdx===f.idx){
+      const key = selectedSegment.segKey;
+      const ov = style.segmentOverrides[key] || {};
+      const eff = effectiveSegStyle(style, key);
+      const segGrp = document.createElement("div");
+      segGrp.className = "grp segGrp";
+      segGrp.innerHTML = `<div class="grp-title">Selected segment</div>
+        <div class="inline-field"><label>Color</label><input type="color" class="sColor" value="${eff.color}"></div>
+        <div class="inline-field"><label>Width</label><input type="range" min="0.5" max="7" step="0.5" value="${eff.strokeWidth}" class="sWidth"></div>
+        <div class="inline-field"><label>Dash</label>
+          <select class="sDash">
+            <option value="solid" ${eff.dash==="solid"?"selected":""}>Solid</option>
+            <option value="dashed" ${eff.dash==="dashed"?"selected":""}>Dashed</option>
+            <option value="dotted" ${eff.dash==="dotted"?"selected":""}>Dotted</option>
+          </select>
+        </div>
+        <div class="inline-field"><label>Opacity</label><input type="range" min="10" max="100" step="5" value="${Math.round(eff.opacity*100)}" class="sOpacity"></div>
+        <div class="rowbtns"><button class="iconbtn sReset">Reset to layer style</button></div>
+      `;
+      const setOv = (k,v)=>{ style.segmentOverrides[key] = Object.assign({}, style.segmentOverrides[key]||{}, {[k]:v}); runPipeline(); };
+      segGrp.querySelector(".sColor").addEventListener("input", e=>setOv("color", e.target.value));
+      segGrp.querySelector(".sWidth").addEventListener("input", e=>setOv("strokeWidth", parseFloat(e.target.value)));
+      segGrp.querySelector(".sDash").addEventListener("change", e=>setOv("dash", e.target.value));
+      segGrp.querySelector(".sOpacity").addEventListener("input", e=>setOv("opacity", parseInt(e.target.value,10)/100));
+      segGrp.querySelector(".sReset").addEventListener("click", ()=>{ delete style.segmentOverrides[key]; renderLegend(); runPipeline(); });
+      body.appendChild(segGrp);
+    }
 
     if (line || poly){
       const grp = document.createElement("div");
@@ -946,6 +1149,8 @@
         background: document.getElementById("bgColor").value || "#0c111d"
       };
       expandedLayer = null;
+      selectedLayer = null;
+      selectedSegment = null;
       resetZoom("both");
       renderLegend();
       runPipeline();
@@ -970,6 +1175,17 @@
     reader.readAsText(file);
   }
 
+  // ---------- Wiring: first-run tip banner ----------
+  const TIP_KEY = "schemify_tip_dismissed";
+  const tipBanner = document.getElementById("tipBanner");
+  try{
+    if (localStorage.getItem(TIP_KEY) === "1") tipBanner.style.display = "none";
+  }catch(e){ /* localStorage unavailable (e.g. file:// in some browsers) - keep tip visible */ }
+  document.getElementById("dismissTip").addEventListener("click", ()=>{
+    tipBanner.style.display = "none";
+    try{ localStorage.setItem(TIP_KEY, "1"); }catch(e){}
+  });
+
   // ---------- Wiring: data ----------
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
@@ -991,6 +1207,7 @@
 
   document.getElementById("simplify").addEventListener("input", e=>{
     document.getElementById("simplifyVal").textContent = parseFloat(e.target.value).toFixed(1)+"%";
+    invalidateSegmentOverrides();
     resetZoom("both");
     debouncedRun();
   });
@@ -1020,26 +1237,64 @@
     URL.revokeObjectURL(url);
   });
 
-  // ---------- Wiring: mode switch ----------
-  const modeGenerate = document.getElementById("modeGenerate");
-  const modeStyle = document.getElementById("modeStyle");
-  const panelGenerate = document.getElementById("panelGenerate");
-  const panelStyle = document.getElementById("panelStyle");
+  document.getElementById("downloadPng").addEventListener("click", ()=>{
+    const svg = window.__lastSchematicSvg;
+    if (!svg){ setStatus("Nothing to export yet.", "err"); return; }
+    const w = parseFloat(svg.dataset.vbW)||900, h = parseFloat(svg.dataset.vbH)||460, scale = 2;
+    const clone = svg.cloneNode(true);
+    clone.setAttribute("xmlns", SVGNS);
+    const src = new XMLSerializer().serializeToString(clone);
+    const svgBlob = new Blob([src], {type:"image/svg+xml;charset=utf-8"});
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const canvas = document.createElement("canvas");
+        canvas.width = w*scale; canvas.height = h*scale;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas not supported");
+        ctx.fillStyle = state.background;
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(blob=>{
+          if (!blob){ setStatus("PNG export failed.", "err"); return; }
+          const pngUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = pngUrl; a.download = "schemify-map.png";
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(pngUrl);
+        }, "image/png");
+      }catch(err){
+        setStatus("PNG export failed: "+err.message, "err");
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = ()=>{ setStatus("PNG export failed.", "err"); URL.revokeObjectURL(url); };
+    img.src = url;
+  });
+
+  // ---------- Wiring: icon rail + slide drawer ----------
+  const drawer = document.getElementById("drawer");
+  const railBtns = document.querySelectorAll(".railBtn");
+  const drawerSections = document.querySelectorAll(".drawerInner section");
   const panelsGrid = document.getElementById("panelsGrid");
   const origPanel = document.getElementById("origPanel");
   const schemPanel = document.getElementById("schemPanel");
+
+  function showSection(sec){
+    activeSection = (activeSection===sec) ? null : sec;
+    drawer.classList.toggle("open", activeSection!==null);
+    railBtns.forEach(b=>b.classList.toggle("active", b.getAttribute("data-sec")===activeSection));
+    drawerSections.forEach(s=>s.classList.toggle("active", s.getAttribute("data-sec")===activeSection));
+  }
+  railBtns.forEach(b=>b.addEventListener("click", ()=>showSection(b.getAttribute("data-sec"))));
+  showSection("data");
 
   // layoutMode: 'split' (default, both panels) | 'orig' (original full width) | 'schem' (schematic full width)
   let layoutMode = "split";
 
   function applyLayout(){
-    if (currentMode==="style"){
-      // Style mode always focuses on the schematic panel alone.
-      origPanel.classList.add("collapsed");
-      schemPanel.classList.remove("collapsed");
-      panelsGrid.classList.add("oneCol");
-      return;
-    }
     panelsGrid.classList.toggle("oneCol", layoutMode!=="split");
     origPanel.classList.toggle("collapsed", layoutMode==="schem");
     schemPanel.classList.toggle("collapsed", layoutMode==="orig");
@@ -1055,30 +1310,34 @@
     });
   }
 
-  function setMode(m){
-    currentMode = m;
-    modeGenerate.classList.toggle("active", m==="generate");
-    modeStyle.classList.toggle("active", m==="style");
-    panelGenerate.style.display = m==="generate" ? "" : "none";
-    panelStyle.style.display = m==="style" ? "" : "none";
-    panelsGrid.classList.toggle("styleMode", m==="style");
-    applyLayout();
-    if (state.rawFeatures) runPipeline();
+  // ---------- Wiring: sync zoom + shared reset ----------
+  const syncZoomBtn = document.getElementById("syncZoomBtn");
+  function updateSyncBtn(){
+    syncZoomBtn.classList.toggle("active", zoomSynced);
+    syncZoomBtn.title = zoomSynced ? "Panels are locked together — click to unlock" : "Panels zoom independently — click to lock together";
   }
-  modeGenerate.addEventListener("click", ()=>setMode("generate"));
-  modeStyle.addEventListener("click", ()=>setMode("style"));
+  syncZoomBtn.addEventListener("click", ()=>{
+    zoomSynced = !zoomSynced;
+    if (zoomSynced){
+      zoomState.schem = Object.assign({}, zoomState.orig);
+      applyZoomBoth();
+    }
+    updateSyncBtn();
+  });
+  updateSyncBtn();
+
+  document.getElementById("resetViewBtn").addEventListener("click", ()=>{
+    resetZoom("both");
+    applyZoomBoth();
+  });
 
   // ---------- Wiring: panel toolbars (zoom + collapse) ----------
-  document.querySelectorAll(".phtools button").forEach(btn=>{
+  document.querySelectorAll(".phtools button[data-panel]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const key = btn.getAttribute("data-panel");
       const act = btn.getAttribute("data-act");
       if (act==="zoomin") zoomByFactor(key, 1.3);
       else if (act==="zoomout") zoomByFactor(key, 1/1.3);
-      else if (act==="reset"){
-        resetZoom(key);
-        applyZoom(key==="orig" ? window.__lastOriginalSvg : window.__lastSchematicSvg, key);
-      }
       else if (act==="collapse"){
         layoutMode = (layoutMode===key) ? "split" : key;
         applyLayout();
