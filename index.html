@@ -247,6 +247,8 @@
   .panels.layout-full #origPanel{display:none;}
   .layer-body .grp.segGrp{background:rgba(91,140,255,.08); border:1px solid rgba(91,140,255,.3); border-radius:6px; padding:8px; margin:-2px 0 8px;}
   .layer-body .grp.segGrp .grp-title{color:var(--accent);}
+  .labelStyleControls.disabled{opacity:0.45;}
+  .labelStyleControls.disabled input, .labelStyleControls.disabled select, .labelStyleControls.disabled button{cursor:not-allowed;}
 </style>
 </head>
 <body>
@@ -323,6 +325,10 @@
           <label class="field">Minimum segment length <span class="val" id="minlenVal">55%</span></label>
           <input type="range" id="minlen" min="10" max="100" step="5" value="55">
           <div class="hint">Higher = fewer tiny, cluttered segments.</div>
+
+          <label class="field">Cross-route merge tolerance <span class="val" id="crossRouteTolVal">0%</span></label>
+          <input type="range" id="crossRouteTol" min="0" max="5" step="0.1" value="0">
+          <div class="hint">Merges nearby points from different routes/lines that don't share exact coordinates, and snaps standalone stations onto a nearby line instead of leaving them floating disconnected beside it &mdash; useful when routes/stops were digitized separately. Leave at 0% for already-clean data (like the built-in city feeds); higher values can wrongly merge two genuinely distinct nearby stations.</div>
         </div>
       </div>
     </div>
@@ -452,14 +458,39 @@
               <div id="styleStatus" class="status"></div>
             </div>
           </details>
+          <details class="accItem">
+            <summary>Label style</summary>
+            <div class="accBody">
+              <div class="hint" style="margin:0 0 8px;">Applies to every layer that hasn't been switched to a custom label style below (each layer's Label group has a "Custom style for this layer" toggle to opt out).</div>
+              <div class="rowbtns" id="bulkLabelBtns" style="display:none; margin-bottom:8px;">
+                <button id="toggleAllLabels" type="button" aria-pressed="false">Show all station labels</button>
+              </div>
+              <div class="inline-field"><label>Size</label><input type="range" min="8" max="18" step="0.5" value="10.5" id="gLabelSize"></div>
+              <div class="inline-field"><label>Color</label><input type="color" value="#e8ecf7" id="gLabelColor"></div>
+              <div class="inline-field"><label>Style</label>
+                <div class="styleToggleBtns">
+                  <button type="button" id="gBold" title="Bold" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+                  <button type="button" id="gItalic" title="Italic" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+                  <button type="button" id="gUnderline" title="Underline" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+                </div>
+              </div>
+              <div class="inline-field"><label>Font</label>
+                <select id="gFont">
+                  <option value="sans" selected>Sans-serif</option>
+                  <option value="serif">Serif</option>
+                  <option value="script">Script</option>
+                  <option value="display">Display</option>
+                  <option value="mono">Monospace</option>
+                </select>
+              </div>
+              <div class="inline-field"><label>Buffer width</label><input type="range" min="0" max="4" step="0.5" value="0" id="gBufferWidth"></div>
+              <div class="inline-field"><label>Buffer color</label><input type="color" value="#0c111d" id="gBufferColor"></div>
+            </div>
+          </details>
           <details class="accItem" open>
             <summary>Layers</summary>
             <div class="accBody">
               <div class="hint" style="margin:0 0 8px;">Click a layer here, or use the Select tool on the map, to select and style it. Select a single stretch between two points to style just that segment. Use the Text tool to click a label directly.</div>
-              <div class="rowbtns" id="bulkLabelBtns" style="display:none; margin-bottom:8px;">
-                <button id="showAllLabels" type="button" title="Show labels on every point layer">Show all station labels</button>
-                <button id="hideAllLabels" type="button" title="Hide labels on every point layer">Hide all station labels</button>
-              </div>
               <div id="legend">
                 <div class="footer-note">No data loaded yet.</div>
               </div>
@@ -569,6 +600,120 @@
 
   function coordKey(x,y,eps){
     return Math.round(x/eps)+","+Math.round(y/eps);
+  }
+
+  // Topology Phase 1 (see topology-inference-design.md): a second, coarser,
+  // user-adjustable merge pass on top of the tight jitter-only snap that
+  // getNode()/coordKey() already do. Grid-bucketed union-find rather than
+  // full DBSCAN — plenty at typical transit-network sizes (hundreds to low
+  // thousands of points) and no new dependency. Mutates `nodes` in place
+  // (collapsing merged clusters to one centroid node each) and remaps
+  // `lineSequences`/`pointNodes` to the surviving node ids.
+  function mergeNearbyNodes(nodes, lineSequences, pointNodes, tolerance){
+    const parent = nodes.map((_,i)=>i);
+    function find(i){ while(parent[i]!==i){ parent[i]=parent[parent[i]]; i=parent[i]; } return i; }
+    function union(i,j){ const ri=find(i), rj=find(j); if (ri!==rj) parent[ri]=rj; }
+
+    const buckets = new Map();
+    nodes.forEach((n,i)=>{
+      const bx = Math.round(n.ox/tolerance), by = Math.round(n.oy/tolerance);
+      for (let dx=-1; dx<=1; dx++){
+        for (let dy=-1; dy<=1; dy++){
+          const neighbours = buckets.get((bx+dx)+","+(by+dy));
+          if (!neighbours) continue;
+          neighbours.forEach(j=>{
+            if (Math.hypot(n.ox-nodes[j].ox, n.oy-nodes[j].oy) <= tolerance) union(i,j);
+          });
+        }
+      }
+      const ownKey = bx+","+by;
+      if (!buckets.has(ownKey)) buckets.set(ownKey, []);
+      buckets.get(ownKey).push(i);
+    });
+
+    const clusters = new Map(); // root id -> [old node ids in this cluster]
+    nodes.forEach((n,i)=>{
+      const r = find(i);
+      if (!clusters.has(r)) clusters.set(r, []);
+      clusters.get(r).push(i);
+    });
+
+    const remap = new Array(nodes.length);
+    const merged = [];
+    clusters.forEach(ids=>{
+      let sx=0, sy=0;
+      ids.forEach(i=>{ sx+=nodes[i].ox; sy+=nodes[i].oy; });
+      const cx = sx/ids.length, cy = sy/ids.length;
+      const newId = merged.length;
+      ids.forEach(i=>{ remap[i]=newId; });
+      merged.push({id:newId, x:cx, y:cy, ox:cx, oy:cy, edges:[]});
+    });
+
+    pointNodes.forEach(pn=>{ pn.node = merged[remap[pn.node.id]]; });
+
+    lineSequences.forEach(seq=>{
+      const collapsed = [];
+      seq.nodeIds.forEach(id=>{
+        const newId = remap[id];
+        if (collapsed.length===0 || collapsed[collapsed.length-1]!==newId) collapsed.push(newId);
+      });
+      // A closed ring can end up with the same start/end id after merging —
+      // trim the trailing duplicate so segment-count math downstream is right.
+      if (seq.closed && collapsed.length>1 && collapsed[0]===collapsed[collapsed.length-1]) collapsed.pop();
+      seq.nodeIds = collapsed;
+    });
+
+    nodes.length = 0;
+    merged.forEach(n=>nodes.push(n));
+  }
+
+  // Topology Phase 2 (topology-inference-design.md): a standalone point
+  // (station) that still isn't a vertex on any line after mergeNearbyNodes —
+  // common when stops are recorded near a route rather than snapped onto it —
+  // gets projected onto the nearest line within tolerance and spliced in as
+  // a real graph vertex, instead of floating next to the line unconnected.
+  // Shares Phase 1's tolerance rather than adding a second slider, so both
+  // read as one "how sloppy is my input" control.
+  function projectStopsOntoLines(nodes, lineSequences, pointNodes, tolerance, vertexEps){
+    const lineNodeIds = new Set();
+    lineSequences.forEach(seq=>seq.nodeIds.forEach(id=>lineNodeIds.add(id)));
+
+    pointNodes.forEach(pn=>{
+      if (lineNodeIds.has(pn.node.id)) return; // already a vertex on some line — nothing to do
+
+      let best = null; // {seq, i, px, py, dist}
+      lineSequences.forEach(seq=>{
+        const ids = seq.nodeIds;
+        const n = ids.length;
+        const segCount = seq.closed ? n : n-1;
+        for (let i=0;i<segCount;i++){
+          const a = nodes[ids[i]], b = nodes[ids[(i+1)%n]];
+          if (!a || !b || a===b) continue;
+          const dx=b.ox-a.ox, dy=b.oy-a.oy;
+          const lenSq = dx*dx+dy*dy;
+          if (lenSq===0) continue;
+          let t = ((pn.node.ox-a.ox)*dx + (pn.node.oy-a.oy)*dy)/lenSq;
+          t = Math.max(0, Math.min(1, t));
+          const px = a.ox+t*dx, py = a.oy+t*dy;
+          const dist = Math.hypot(pn.node.ox-px, pn.node.oy-py);
+          if (dist<=tolerance && (!best || dist<best.dist)) best = {seq, i, px, py, dist};
+        }
+      });
+      if (!best) return; // nothing close enough — leave it floating, same as today
+
+      const ids = best.seq.nodeIds;
+      const a = nodes[ids[best.i]], b = nodes[ids[(best.i+1)%ids.length]];
+      // Close enough to an existing endpoint — merge onto it rather than
+      // inserting a near-duplicate vertex a hair's-width away.
+      if (Math.hypot(best.px-a.ox, best.py-a.oy) <= vertexEps){ pn.node = a; lineNodeIds.add(a.id); return; }
+      if (Math.hypot(best.px-b.ox, best.py-b.oy) <= vertexEps){ pn.node = b; lineNodeIds.add(b.id); return; }
+
+      const newNode = {id:nodes.length, x:best.px, y:best.py, ox:best.px, oy:best.py, edges:[]};
+      nodes.push(newNode);
+      ids.splice(best.i+1, 0, newNode.id);
+      pn.node = newNode;
+      lineNodeIds.add(newNode.id);
+    });
   }
 
   function snapAngle(angle, steps){
@@ -719,10 +864,26 @@
   function isPolygonish(geomType){ return geomType==="Polygon" || geomType==="MultiPolygon"; }
   function isPointish(geomType){ return geomType==="Point" || geomType==="MultiPoint"; }
 
+  // Shared default label look, used both to seed each layer's own label
+  // fields (kept around so toggling "custom" back on doesn't lose them) and
+  // as state.globalLabelStyle, the central style layers follow by default.
+  function defaultGlobalLabelStyle(){
+    return {
+      labelSize: 10.5,
+      labelColor: "#e8ecf7",
+      labelBold: false,
+      labelItalic: false,
+      labelUnderline: false,
+      labelFont: "sans",
+      labelBufferWidth: 0,
+      labelBufferColor: "#0c111d"
+    };
+  }
+
   function defaultStyleFor(feat){
     const poly = isPolygonish(feat.geomType);
     const line = isLineish(feat.geomType);
-    return {
+    return Object.assign({
       color: feat.color,
       strokeWidth: poly ? 2 : 2.6,
       dash: "solid",
@@ -732,16 +893,9 @@
       nodeRadius: isPointish(feat.geomType) ? 5 : (poly||line ? 4.2 : 4),
       nodeShape: "circle",
       showLabel: isPointish(feat.geomType),
-      labelSize: 10.5,
-      labelColor: "#e8ecf7",
-      labelBold: false,
-      labelItalic: false,
-      labelUnderline: false,
-      labelFont: "sans",
-      labelBufferWidth: 0,
-      labelBufferColor: "#0c111d",
+      customLabel: false,
       segmentOverrides: {}
-    };
+    }, defaultGlobalLabelStyle());
   }
 
   function dashArray(dash, width){
@@ -802,7 +956,7 @@
   }
 
   // ---------- State ----------
-  let state = { rawFeatures: null, lat0: 0, bbox: null, styles: [], order: [], background: "#0c111d" };
+  let state = { rawFeatures: null, lat0: 0, bbox: null, styles: [], order: [], background: "#0c111d", globalLabelStyle: defaultGlobalLabelStyle() };
   let expandedLayer = null;
   let selectedLayer = null;
   let selectedSegment = null; // {fIdx, segKey} | null
@@ -839,12 +993,20 @@
     ) || 1000;
     const simplifyTol = diag * (simplifyPct/100);
     const snapEps = Math.max(diag*0.0015, 0.01);
+    const crossRoutePct = parseFloat(document.getElementById("crossRouteTol").value);
+    const crossRouteTolerance = diag * (crossRoutePct/100);
 
     const origDraw = [];
     const nodeByKey = new Map();
     const nodes = [];
     const edges = [];
-    const edgeSet = new Set();
+    // Key "aId_bId" -> the edge object. Was a plain Set (membership only);
+    // now a Map so a second route sharing an already-snapped corridor can be
+    // recorded on the existing edge (edge.routeFeatures) instead of just
+    // silently vanishing — the multiplicity is what corridor/route-bundling
+    // rendering (not built yet) would need. Map still supports .has(), so
+    // resolveOverlaps()'s existing dedup checks below are unaffected.
+    const edgeSet = new Map();
     const lineSequences = [];
     const pointNodes = [];
 
@@ -869,19 +1031,6 @@
           const n = getNode(line[i][0], line[i][1]);
           ids.push(n.id);
         }
-        const segCount = isClosed ? line.length : line.length-1;
-        for (let i=0;i<segCount;i++){
-          const aId = ids[i], bId = ids[(i+1)%ids.length];
-          if (aId===bId) continue;
-          const a = nodes[aId], b = nodes[bId];
-          const key1=a.id+"_"+b.id;
-          if (edgeSet.has(key1) || edgeSet.has(b.id+"_"+a.id)) continue;
-          const len=Math.hypot(b.ox-a.ox, b.oy-a.oy);
-          const angle=Math.atan2(b.oy-a.oy, b.ox-a.ox);
-          const e={a,b,len,angle,featureIdx:f.idx};
-          edges.push(e); a.edges.push(e); b.edges.push(e);
-          edgeSet.add(key1);
-        }
         lineSequences.push({featureIdx:f.idx, nodeIds:ids, closed:isClosed});
       });
 
@@ -891,9 +1040,59 @@
       });
     });
 
+    // Optional coarse cross-route merge (topology Phase 1): collapses nodes
+    // that are close but not exactly snapped — e.g. two routes digitized
+    // independently that run the same street a few metres apart. Off by
+    // default (crossRouteTolerance===0), so already-clean input (the OSM
+    // city feeds, or any GeoJSON where shared points already coincide)
+    // renders exactly as it did before this control existed.
+    if (crossRouteTolerance > 0){
+      mergeNearbyNodes(nodes, lineSequences, pointNodes, crossRouteTolerance);
+      // Phase 2: anything still standalone after the vertex merge above (a
+      // station recorded near a line rather than on it) gets a chance to
+      // snap onto the nearest line within the same tolerance.
+      projectStopsOntoLines(nodes, lineSequences, pointNodes, crossRouteTolerance, snapEps);
+    }
+
+    // Build edges from (possibly merged) lineSequences. Kept as its own pass
+    // rather than inline in the feature loop above so the merge step can run
+    // in between — edges must reflect final, post-merge node ids.
+    lineSequences.forEach(seq=>{
+      const ids = seq.nodeIds;
+      const n = ids.length;
+      const segCount = seq.closed ? n : n-1;
+      for (let i=0;i<segCount;i++){
+        const aId = ids[i], bId = ids[(i+1)%n];
+        if (aId===bId) continue;
+        const a = nodes[aId], b = nodes[bId];
+        const key1=a.id+"_"+b.id, key2=b.id+"_"+a.id;
+        const existing = edgeSet.get(key1) || edgeSet.get(key2);
+        if (existing){
+          // Another route already has an edge on this exact corridor —
+          // don't add a second layout edge (would double the schematize
+          // forces), but do record this feature as sharing it, so the
+          // multiplicity is tracked instead of silently dropped.
+          if (!existing.routeFeatures.includes(seq.featureIdx)) existing.routeFeatures.push(seq.featureIdx);
+          continue;
+        }
+        const len=Math.hypot(b.ox-a.ox, b.oy-a.oy);
+        const angle=Math.atan2(b.oy-a.oy, b.ox-a.ox);
+        const e={a,b,len,angle,featureIdx:seq.featureIdx,routeFeatures:[seq.featureIdx]};
+        edges.push(e); a.edges.push(e); b.edges.push(e);
+        edgeSet.set(key1, e);
+      }
+    });
+
     schematize(nodes, edges, {steps, iterations, minLenFrac});
     const avgTargetLen = edges.length ? edges.reduce((s,e)=>s+e.targetLen,0)/edges.length : diag*0.08;
     resolveOverlaps(nodes, edgeSet, avgTargetLen*0.28, 15);
+
+    // Debug/test introspection only (mirrors window.__lastSchematicSvg below)
+    // — lets tests and console poking verify edge.routeFeatures multiplicity
+    // and merged node counts without needing a dedicated API.
+    window.__lastEdges = edges;
+    window.__lastNodes = nodes;
+    window.__lastPointNodes = pointNodes;
 
     render(origDraw, feats, nodes, lineSequences, pointNodes, {nodeCount:nodes.length, edgeCount:edges.length});
   }
@@ -1108,6 +1307,24 @@
     wireZoomInteractions(svg, "orig");
   }
 
+  // Resolves which label-look fields actually apply to a layer: its own
+  // (style.customLabel === true), or the shared central style otherwise.
+  // showLabel/nodeRadius etc. stay on the per-layer style — only the visual
+  // text properties are swapped.
+  function effectiveLabelStyle(style){
+    const src = style.customLabel ? style : state.globalLabelStyle;
+    return {
+      labelSize: src.labelSize,
+      labelColor: src.labelColor,
+      labelBold: src.labelBold,
+      labelItalic: src.labelItalic,
+      labelUnderline: src.labelUnderline,
+      labelFont: src.labelFont,
+      labelBufferWidth: src.labelBufferWidth,
+      labelBufferColor: src.labelBufferColor
+    };
+  }
+
   // Builds SVG <text> presentation attrs for a layer's label style: font family
   // (from FONT_STACKS), bold/italic/underline, and an optional buffer/halo drawn
   // via stroke + paint-order (the QGIS-style "buffer around text" behind each glyph).
@@ -1314,12 +1531,13 @@
       if (!style.showLabel) return;
       const rawName = feat.props && (feat.props.name||feat.props.NAME||feat.props.Name||feat.props.title||feat.props.label);
       if (!rawName) return;
-      const textAttrs = labelTextAttrs(style);
+      const effStyle = effectiveLabelStyle(style);
+      const textAttrs = labelTextAttrs(effStyle);
 
       if (isPointish(feat.geomType)){
         pointNodes.filter(p=>p.featureIdx===fIdx).forEach(({node})=>{
           const [px,py]=toScreen(t,node.x,node.y);
-          const placed = placeLabel(px, py, style.nodeRadius, rawName, style, occupied);
+          const placed = placeLabel(px, py, style.nodeRadius, rawName, effStyle, occupied);
           const txt = svgEl("text", Object.assign({x:placed.x,y:placed.y,"text-anchor":placed.anchor,"data-fidx":fIdx,"data-label":"1"}, textAttrs));
           txt.textContent = rawName;
           g.appendChild(txt);
@@ -1338,7 +1556,7 @@
             lx = nodes[seq.nodeIds[midIdx]].x; ly = nodes[seq.nodeIds[midIdx]].y;
           }
           const [px,py] = toScreen(t, lx, ly);
-          const placed = placeLabel(px, py, 3, rawName, style, occupied);
+          const placed = placeLabel(px, py, 3, rawName, effStyle, occupied);
           const txt = svgEl("text", Object.assign({x:placed.x,y:placed.y,"text-anchor":placed.anchor,"data-fidx":fIdx,"data-label":"1"}, textAttrs));
           txt.textContent = rawName;
           g.appendChild(txt);
@@ -1409,15 +1627,8 @@
     const feats = state.rawFeatures;
     const el = document.getElementById("legend");
     el.innerHTML = "";
-    const bulkBtns = document.getElementById("bulkLabelBtns");
-    if (!feats){ el.innerHTML = '<div class="footer-note">No data loaded yet.</div>'; if (bulkBtns) bulkBtns.style.display = "none"; return; }
-
-    // Bulk label controls only make sense once there are enough point layers
-    // (stations/POIs) that toggling each one's label individually gets tedious.
-    if (bulkBtns){
-      const pointLayerCount = feats.filter(f=>f && isPointish(f.geomType)).length;
-      bulkBtns.style.display = pointLayerCount >= 2 ? "flex" : "none";
-    }
+    syncBulkLabelToggleUI();
+    if (!feats){ el.innerHTML = '<div class="footer-note">No data loaded yet.</div>'; return; }
 
     state.order.forEach((fIdx, pos) => {
       const f = feats[fIdx];
@@ -1574,29 +1785,50 @@
     const labelGrp = document.createElement("div");
     labelGrp.className = "grp";
     labelGrp.id = "labelGrp-"+f.idx;
-    const fontOptionsHtml = FONT_OPTIONS.map(o=>`<option value="${o.value}" style="font-family:${FONT_STACKS[o.value]}" ${style.labelFont===o.value?"selected":""}>${o.label}</option>`).join("");
+    // While this layer follows the central Label style (customLabel===false),
+    // show the central style's current values here (disabled) rather than this
+    // layer's own stored ones — otherwise the panel would show stale numbers
+    // that aren't actually what's rendering. Its own values are kept in style.*
+    // untouched so switching "Custom" back on picks up right where it left off.
+    const dispStyle = style.customLabel ? style : state.globalLabelStyle;
+    const fontOptionsHtml = FONT_OPTIONS.map(o=>`<option value="${o.value}" style="font-family:${FONT_STACKS[o.value]}" ${dispStyle.labelFont===o.value?"selected":""}>${o.label}</option>`).join("");
     labelGrp.innerHTML = `<div class="grp-title">Label</div>
       <div class="chk-field"><input type="checkbox" class="fShowLabel" ${style.showLabel?"checked":""}><label>Show label</label></div>
-      <div class="inline-field"><label>Size</label><input type="range" min="8" max="18" step="0.5" value="${style.labelSize}" class="fLabelSize"></div>
-      <div class="inline-field"><label>Color</label><input type="color" class="fLabelColor" value="${style.labelColor}"></div>
-      <div class="inline-field"><label>Style</label>
-        <div class="styleToggleBtns">
-          <button type="button" class="fBold ${style.labelBold?"active":""}" title="Bold" aria-label="Bold" aria-pressed="${style.labelBold}"><b>B</b></button>
-          <button type="button" class="fItalic ${style.labelItalic?"active":""}" title="Italic" aria-label="Italic" aria-pressed="${style.labelItalic}"><i>I</i></button>
-          <button type="button" class="fUnderline ${style.labelUnderline?"active":""}" title="Underline" aria-label="Underline" aria-pressed="${style.labelUnderline}"><u>U</u></button>
+      <div class="chk-field"><input type="checkbox" class="fCustomLabel" ${style.customLabel?"checked":""}><label>Custom style for this layer (otherwise follows the central Label style)</label></div>
+      <div class="labelStyleControls">
+        <div class="inline-field"><label>Size</label><input type="range" min="8" max="18" step="0.5" value="${dispStyle.labelSize}" class="fLabelSize"></div>
+        <div class="inline-field"><label>Color</label><input type="color" class="fLabelColor" value="${dispStyle.labelColor}"></div>
+        <div class="inline-field"><label>Style</label>
+          <div class="styleToggleBtns">
+            <button type="button" class="fBold ${dispStyle.labelBold?"active":""}" title="Bold" aria-label="Bold" aria-pressed="${dispStyle.labelBold}"><b>B</b></button>
+            <button type="button" class="fItalic ${dispStyle.labelItalic?"active":""}" title="Italic" aria-label="Italic" aria-pressed="${dispStyle.labelItalic}"><i>I</i></button>
+            <button type="button" class="fUnderline ${dispStyle.labelUnderline?"active":""}" title="Underline" aria-label="Underline" aria-pressed="${dispStyle.labelUnderline}"><u>U</u></button>
+          </div>
         </div>
-      </div>
-      <div class="inline-field"><label>Font</label>
-        <div class="fontPickWrap">
-          <select class="fFont">${fontOptionsHtml}</select>
-          <span class="fontPreview" id="fontPreview-${f.idx}" style="font-family:${FONT_STACKS[style.labelFont]};" lang="ml" aria-hidden="true">Aa&#160;&#3333;</span>
+        <div class="inline-field"><label>Font</label>
+          <div class="fontPickWrap">
+            <select class="fFont">${fontOptionsHtml}</select>
+            <span class="fontPreview" id="fontPreview-${f.idx}" style="font-family:${FONT_STACKS[dispStyle.labelFont]};" lang="ml" aria-hidden="true">Aa&#160;&#3333;</span>
+          </div>
         </div>
+        <div class="inline-field"><label>Buffer width</label><input type="range" min="0" max="4" step="0.5" value="${dispStyle.labelBufferWidth}" class="fBufferWidth"></div>
+        <div class="inline-field"><label>Buffer color</label><input type="color" class="fBufferColor" value="${dispStyle.labelBufferColor}"></div>
       </div>
-      <div class="inline-field"><label>Buffer width</label><input type="range" min="0" max="4" step="0.5" value="${style.labelBufferWidth}" class="fBufferWidth"></div>
-      <div class="inline-field"><label>Buffer color</label><input type="color" class="fBufferColor" value="${style.labelBufferColor}"></div>
       <div class="hint">Buffer draws a halo/outline behind the text (like QGIS label buffers) &mdash; useful for readability over busy backgrounds.</div>
       <div class="hint">Fonts have full Unicode/Indic support (Malayalam via <a href="https://smc.org.in/" target="_blank" rel="noopener" style="color:var(--accent);">SMC</a>). See the About panel for font credits.</div>`;
-    labelGrp.querySelector(".fShowLabel").addEventListener("change", e=>{ style.showLabel = e.target.checked; runPipeline(); });
+    const styleControlsEl = labelGrp.querySelector(".labelStyleControls");
+    function setLabelControlsDisabled(disabled){
+      styleControlsEl.querySelectorAll("input, select, button").forEach(el=>{ el.disabled = disabled; });
+      styleControlsEl.classList.toggle("disabled", disabled);
+    }
+    setLabelControlsDisabled(!style.customLabel);
+    labelGrp.querySelector(".fShowLabel").addEventListener("change", e=>{ style.showLabel = e.target.checked; syncBulkLabelToggleUI(); runPipeline(); });
+    labelGrp.querySelector(".fCustomLabel").addEventListener("change", e=>{
+      style.customLabel = e.target.checked;
+      setLabelControlsDisabled(!style.customLabel);
+      renderLegend();
+      runPipeline();
+    });
     labelGrp.querySelector(".fLabelSize").addEventListener("input", e=>{ style.labelSize = parseFloat(e.target.value); runPipeline(); });
     labelGrp.querySelector(".fLabelColor").addEventListener("input", e=>{ style.labelColor = e.target.value; runPipeline(); });
     labelGrp.querySelector(".fBold").addEventListener("click", e=>{ style.labelBold = !style.labelBold; e.currentTarget.classList.toggle("active", style.labelBold); e.currentTarget.setAttribute("aria-pressed", style.labelBold); runPipeline(); });
@@ -1636,8 +1868,10 @@
         rawFeatures: feats, lat0, bbox,
         styles: feats.map(f=>defaultStyleFor(f)),
         order: feats.map(f=>f.idx),
-        background: document.getElementById("bgColor").value || "#0c111d"
+        background: document.getElementById("bgColor").value || "#0c111d",
+        globalLabelStyle: defaultGlobalLabelStyle()
       };
+      if (typeof syncGlobalLabelUI === "function") syncGlobalLabelUI();
       expandedLayer = null;
       selectedLayer = null;
       selectedSegment = null;
@@ -1715,6 +1949,12 @@
     resetZoom("schem");
     debouncedRun();
   });
+  document.getElementById("crossRouteTol").addEventListener("input", e=>{
+    document.getElementById("crossRouteTolVal").textContent = parseFloat(e.target.value).toFixed(1)+"%";
+    invalidateSegmentOverrides();
+    resetZoom("both");
+    debouncedRun();
+  });
   document.getElementById("styleMode").addEventListener("change", ()=>{ resetZoom("schem"); debouncedRun(); });
 
   document.getElementById("downloadSvg").addEventListener("click", ()=>{
@@ -1783,6 +2023,11 @@
     drawer.classList.toggle("open", activeLeftSection!==null);
     leftRailBtns.forEach(b=>b.classList.toggle("active", b.getAttribute("data-sec")===activeLeftSection));
     leftDrawerSections.forEach(s=>s.classList.toggle("active", s.getAttribute("data-sec")===activeLeftSection));
+    // Only one side panel open at a time — opening this one closes Style & Layers.
+    if (activeLeftSection!==null && activeRightSection!==null){
+      activeRightSection = null;
+      applyRightSection();
+    }
   }
   leftRailBtns.forEach(b=>b.addEventListener("click", ()=>showLeftSection(b.getAttribute("data-sec"))));
 
@@ -1795,6 +2040,13 @@
     drawerRight.classList.toggle("open", activeRightSection!==null);
     rightRailBtns.forEach(b=>b.classList.toggle("active", b.getAttribute("data-sec")===activeRightSection));
     rightDrawerSections.forEach(s=>s.classList.toggle("active", s.getAttribute("data-sec")===activeRightSection));
+    // Only one side panel open at a time — opening this one closes the left drawer.
+    if (activeRightSection!==null && activeLeftSection!==null){
+      activeLeftSection = null;
+      drawer.classList.remove("open");
+      leftRailBtns.forEach(b=>b.classList.remove("active"));
+      leftDrawerSections.forEach(s=>s.classList.remove("active"));
+    }
   }
   // Toggle (used by the rail icon itself — click again to close).
   function showRightSection(sec){
@@ -1957,9 +2209,12 @@
     setStyleStatus("Style exported.", "ok");
   });
 
-  // ---------- Wiring: bulk station-label show/hide ----------
-  // Toggling showLabel on every point-type layer at once, instead of opening
-  // each station's row individually — the "one by one, gets messy" fix.
+  // ---------- Wiring: bulk station-label show/hide (single toggle) ----------
+  // One button in the Label style section, instead of opening each station's
+  // row individually — the "one by one, gets messy" fix. Lives here (not in
+  // Layers) since it's a label-visibility action, and the toggle's own
+  // label/state reflects whether every point layer currently has its label
+  // shown, so it always says what clicking it will do next.
   function setAllPointLabels(visible){
     if (!state.rawFeatures) return;
     state.rawFeatures.forEach((f, i)=>{
@@ -1968,8 +2223,58 @@
     renderLegend();
     runPipeline();
   }
-  document.getElementById("showAllLabels").addEventListener("click", ()=>setAllPointLabels(true));
-  document.getElementById("hideAllLabels").addEventListener("click", ()=>setAllPointLabels(false));
+  function syncBulkLabelToggleUI(){
+    const bulkBtns = document.getElementById("bulkLabelBtns");
+    const btn = document.getElementById("toggleAllLabels");
+    if (!bulkBtns || !btn) return;
+    const feats = state.rawFeatures;
+    const pointStyles = feats ? feats.map((f,i)=>({f, style:state.styles[i]})).filter(x=>x.f && isPointish(x.f.geomType)) : [];
+    bulkBtns.style.display = pointStyles.length >= 2 ? "flex" : "none";
+    if (pointStyles.length === 0) return;
+    const allVisible = pointStyles.every(x=>x.style.showLabel);
+    btn.textContent = allVisible ? "Hide all station labels" : "Show all station labels";
+    btn.title = allVisible ? "Hide labels on every point layer" : "Show labels on every point layer";
+    btn.setAttribute("aria-pressed", String(allVisible));
+  }
+  document.getElementById("toggleAllLabels").addEventListener("click", e=>{
+    const willShow = e.currentTarget.getAttribute("aria-pressed") !== "true";
+    setAllPointLabels(willShow);
+  });
+
+  // ---------- Wiring: central Label style ----------
+  // Applies to every layer with customLabel===false (the default). Layers
+  // that opted into their own style via the per-layer "Custom style for this
+  // layer" toggle are untouched by any of this.
+  const gLabelSize = document.getElementById("gLabelSize");
+  const gLabelColor = document.getElementById("gLabelColor");
+  const gBold = document.getElementById("gBold");
+  const gItalic = document.getElementById("gItalic");
+  const gUnderline = document.getElementById("gUnderline");
+  const gFont = document.getElementById("gFont");
+  const gBufferWidth = document.getElementById("gBufferWidth");
+  const gBufferColor = document.getElementById("gBufferColor");
+  function syncGlobalLabelUI(){
+    const gs = state.globalLabelStyle;
+    gLabelSize.value = gs.labelSize;
+    gLabelColor.value = gs.labelColor;
+    gBold.classList.toggle("active", gs.labelBold);
+    gBold.setAttribute("aria-pressed", gs.labelBold);
+    gItalic.classList.toggle("active", gs.labelItalic);
+    gItalic.setAttribute("aria-pressed", gs.labelItalic);
+    gUnderline.classList.toggle("active", gs.labelUnderline);
+    gUnderline.setAttribute("aria-pressed", gs.labelUnderline);
+    gFont.value = gs.labelFont;
+    gBufferWidth.value = gs.labelBufferWidth;
+    gBufferColor.value = gs.labelBufferColor;
+  }
+  gLabelSize.addEventListener("input", e=>{ state.globalLabelStyle.labelSize = parseFloat(e.target.value); runPipeline(); });
+  gLabelColor.addEventListener("input", e=>{ state.globalLabelStyle.labelColor = e.target.value; runPipeline(); });
+  gBold.addEventListener("click", e=>{ const gs=state.globalLabelStyle; gs.labelBold=!gs.labelBold; e.currentTarget.classList.toggle("active", gs.labelBold); e.currentTarget.setAttribute("aria-pressed", gs.labelBold); runPipeline(); });
+  gItalic.addEventListener("click", e=>{ const gs=state.globalLabelStyle; gs.labelItalic=!gs.labelItalic; e.currentTarget.classList.toggle("active", gs.labelItalic); e.currentTarget.setAttribute("aria-pressed", gs.labelItalic); runPipeline(); });
+  gUnderline.addEventListener("click", e=>{ const gs=state.globalLabelStyle; gs.labelUnderline=!gs.labelUnderline; e.currentTarget.classList.toggle("active", gs.labelUnderline); e.currentTarget.setAttribute("aria-pressed", gs.labelUnderline); runPipeline(); });
+  gFont.addEventListener("change", e=>{ state.globalLabelStyle.labelFont = e.target.value; runPipeline(); });
+  gBufferWidth.addEventListener("input", e=>{ state.globalLabelStyle.labelBufferWidth = parseFloat(e.target.value); runPipeline(); });
+  gBufferColor.addEventListener("input", e=>{ state.globalLabelStyle.labelBufferColor = e.target.value; runPipeline(); });
 
   const importStyleInput = document.getElementById("importStyleInput");
   document.getElementById("importStyleBtn").addEventListener("click", ()=>importStyleInput.click());

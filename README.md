@@ -71,7 +71,13 @@ install.
 
 - **Simplify:** each line/polygon ring is reduced with Douglas–Peucker simplification.
 - **Graph:** shared coordinates (e.g. line intersections) are snapped together into common nodes
-  so topology is preserved.
+  so topology is preserved. An optional **Cross-route merge tolerance** Shape control (0% by
+  default, off) additionally merges nearby-but-not-exactly-coincident points from independently
+  digitized routes, and snaps standalone stations onto a nearby line instead of leaving them
+  floating disconnected beside it — useful for raw route-level data where two routes on the same
+  street weren't digitized as sharing coordinates. Leave at 0% for already-clean data (like the
+  built-in city feeds); higher values trade some risk of merging two genuinely distinct nearby
+  stations for a connected, less messy graph.
 - **Straighten:** edge angles are snapped to the nearest allowed direction (45° or 90°
   increments), then node positions are relaxed iteratively so edges align to their snapped
   angles while staying connected.
@@ -86,16 +92,14 @@ cleanly, but busy junctions with 3+ connections can land a few degrees off-grid 
 angle constraint can be satisfied at once. A future version may explore a proper optimization-based
 layout for those cases.
 
-**Known limitation — assumes clean input topology.** Schemify's graph step only merges points that
-share exact coordinates, so it works well on data that's already a resolved network graph (e.g. the
-OSM-derived city feeds it fetches, where shared junctions are literally the same node). It does not
-yet handle raw route-level data, where two routes running the same physical corridor are digitized
-as two separate, non-coincident lines, and stops sit near a line rather than snapped onto it.
-Turning that kind of input into a schematic map needs two things Schemify doesn't do today: spatial
-clustering of nearby stops/vertices within a tolerance to infer which points are the same real-world
-station or junction, and detection of route segments that share a corridor so they can be drawn as
-bundled parallel lines rather than tangled overlapping ones. Both are meaningfully harder than the
-angle-snapping this tool currently does. (Feedback from a working transit cartographer, July 2026.)
+**Known limitation — routes sharing a corridor still overlap.** Schemify can now merge nearby
+stops/vertices from independently-digitized routes and snap standalone stations onto a nearby line
+(the Cross-route merge tolerance control above), so raw route-level data doesn't have to already be
+a perfectly resolved graph. What it still doesn't do: detect when multiple routes share the same
+physical corridor and draw them as bundled, offset parallel lines. Right now, two routes on the same
+street render as one overlapping line rather than visibly-distinct parallel ones — meaningfully
+harder than the merging/snapping above, and still on the roadmap. (Feedback from a working transit
+cartographer, July 2026.)
 
 ## Status / roadmap
 
@@ -120,14 +124,20 @@ angle-snapping this tool currently does. (Feedback from a working transit cartog
       controls, accessible SVG names, visible focus rings
 - [x] Collision-avoidance label placement, plus bulk show/hide for station labels (fixes label
       clutter/overlap in dense networks)
+- [x] Mutually exclusive left/right drawers (opening one closes the other)
+- [x] Central label style with per-layer opt-out (style every label at once, or customize one
+      layer without affecting the rest)
+- [x] Topology inference from raw route data: opt-in tolerance-based merging of nearby
+      stops/vertices, plus snapping standalone stations onto a nearby line instead of leaving
+      them floating disconnected
 - [ ] Optimization-based (non-heuristic) angle solving for complex junctions
 - [ ] Saving/loading full map projects (data + style together)
 - [ ] Broader city coverage for the network-fetch picker (currently ~45 curated cities; paste
       any direct GeoJSON URL to fetch others)
-- [ ] Topology inference from raw route data: tolerance-based clustering of nearby stops/vertices
-      into shared nodes (input isn't always a pre-resolved graph)
 - [ ] Route bundling: detect segments shared by multiple routes and draw them as offset parallel
       lines instead of overlapping ones
+- [ ] Topology diagnostics panel: flag structurally-suspicious merges (very different names, a
+      merge distance near the tolerance ceiling) instead of merging silently
 
 Issues and PRs welcome.
 
