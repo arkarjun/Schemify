@@ -75,7 +75,11 @@ install.
 - **Straighten:** edge angles are snapped to the nearest allowed direction (45° or 90°
   increments), then node positions are relaxed iteratively so edges align to their snapped
   angles while staying connected.
-- **Declutter:** a light overlap-resolution pass nudges nearby unconnected nodes apart.
+- **Declutter:** a light overlap-resolution pass nudges nearby unconnected nodes apart, and labels are
+  placed with their own collision-avoidance pass — each label tries a handful of positions around its
+  station/line and picks whichever overlaps other labels and markers the least, instead of a single
+  fixed offset. In dense networks, use the **Show/Hide all station labels** buttons in the Layers panel
+  to toggle every point layer's label at once rather than opening each station individually.
 
 This is a fast heuristic, not a constraint solver — degree-2 paths (typical roads/lines) snap
 cleanly, but busy junctions with 3+ connections can land a few degrees off-grid since not every
@@ -114,6 +118,8 @@ angle-snapping this tool currently does. (Feedback from a working transit cartog
 - [x] Sync zoom / Reset view / layout switch consolidated into the schematic panel's own header
 - [x] Accessibility pass: keyboard-operable dropzone, ARIA labels and pressed-states on icon-only
       controls, accessible SVG names, visible focus rings
+- [x] Collision-avoidance label placement, plus bulk show/hide for station labels (fixes label
+      clutter/overlap in dense networks)
 - [ ] Optimization-based (non-heuristic) angle solving for complex junctions
 - [ ] Saving/loading full map projects (data + style together)
 - [ ] Broader city coverage for the network-fetch picker (currently ~45 curated cities; paste

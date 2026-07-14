@@ -456,6 +456,10 @@
             <summary>Layers</summary>
             <div class="accBody">
               <div class="hint" style="margin:0 0 8px;">Click a layer here, or use the Select tool on the map, to select and style it. Select a single stretch between two points to style just that segment. Use the Text tool to click a label directly.</div>
+              <div class="rowbtns" id="bulkLabelBtns" style="display:none; margin-bottom:8px;">
+                <button id="showAllLabels" type="button" title="Show labels on every point layer">Show all station labels</button>
+                <button id="hideAllLabels" type="button" title="Hide labels on every point layer">Hide all station labels</button>
+              </div>
               <div id="legend">
                 <div class="footer-note">No data loaded yet.</div>
               </div>
@@ -1125,6 +1129,68 @@
     return attrs;
   }
 
+  // ---------- Label placement (collision avoidance) ----------
+  // Cheap greedy label placer: for each label, try a handful of candidate
+  // positions around its anchor (8 compass-ish directions) and keep whichever
+  // overlaps already-placed labels/markers the least. Not a true solver, just
+  // the same "candidates + greedy pick" heuristic most label renderers use —
+  // enough to stop station names stacking on top of each other in dense
+  // clusters, which the old single fixed offset never could.
+  let __measureCtx = null, __measureCtxTried = false;
+  function measureTextWidth(text, style){
+    if (!__measureCtxTried){
+      __measureCtxTried = true;
+      try { __measureCtx = document.createElement("canvas").getContext("2d"); } catch(e) { __measureCtx = null; }
+    }
+    if (__measureCtx){
+      const weight = style.labelBold ? "bold " : "";
+      const styleFlag = style.labelItalic ? "italic " : "";
+      __measureCtx.font = `${styleFlag}${weight}${style.labelSize}px ${FONT_STACKS[style.labelFont] || FONT_STACKS.sans}`;
+      return __measureCtx.measureText(text).width;
+    }
+    // Fallback for environments without a working 2D canvas context (e.g. some
+    // headless/test DOMs): rough average-glyph-width estimate, wide enough
+    // that the collision-avoidance pass stays conservative rather than
+    // under-estimating and letting labels overlap.
+    const avgCharWidth = style.labelSize * (style.labelBold ? 0.62 : 0.56);
+    return text.length * avgCharWidth;
+  }
+
+  function rectOverlapArea(a, b){
+    const ox = Math.max(0, Math.min(a[2],b[2]) - Math.max(a[0],b[0]));
+    const oy = Math.max(0, Math.min(a[3],b[3]) - Math.max(a[1],b[1]));
+    return ox*oy;
+  }
+
+  // Places one label near (px,py), avoiding `occupied` rects (other labels'
+  // boxes + node markers). Returns {x, y, anchor} for the SVG <text> element
+  // and pushes its own box into `occupied` so later labels avoid it too.
+  function placeLabel(px, py, r, text, style, occupied){
+    const w = measureTextWidth(text, style);
+    const asc = style.labelSize*0.8, desc = style.labelSize*0.3;
+    const candidates = [
+      {x:px+r+3, y:py+style.labelSize*0.35, anchor:"start"},
+      {x:px+r*0.7+3, y:py-r-3, anchor:"start"},
+      {x:px+r*0.7+3, y:py+r+style.labelSize+2, anchor:"start"},
+      {x:px-r-3, y:py+style.labelSize*0.35, anchor:"end"},
+      {x:px-r*0.7-3, y:py-r-3, anchor:"end"},
+      {x:px-r*0.7-3, y:py+r+style.labelSize+2, anchor:"end"},
+      {x:px, y:py-r-3, anchor:"middle"},
+      {x:px, y:py+r+style.labelSize+3, anchor:"middle"}
+    ];
+    let best=null, bestOverlap=Infinity;
+    for (const c of candidates){
+      const x0 = c.anchor==="start" ? c.x : c.anchor==="end" ? c.x-w : c.x-w/2;
+      const rect=[x0, c.y-asc, x0+w, c.y+desc];
+      let overlap=0;
+      for (const o of occupied){ overlap += rectOverlapArea(rect,o); if (overlap>bestOverlap) break; }
+      if (overlap===0){ best={x:c.x,y:c.y,anchor:c.anchor,rect}; break; }
+      if (overlap<bestOverlap){ bestOverlap=overlap; best={x:c.x,y:c.y,anchor:c.anchor,rect}; }
+    }
+    occupied.push(best.rect);
+    return best;
+  }
+
   function renderSchematic(nodes, lineSequences, pointNodes, feats, W, H, pad){
     const allPts = nodes.map(n=>[n.x,n.y]);
     const t = fitTransform(allPts, W, H, pad);
@@ -1194,6 +1260,8 @@
       });
     });
 
+    const markerRects = [];
+
     // 2) junction / endpoint dots, in layer order
     order.forEach(fIdx=>{
       const feat = feats[fIdx];
@@ -1213,6 +1281,7 @@
             const r = isJunction ? style.nodeRadius*1.05 : style.nodeRadius*0.85;
             const dotEl = drawNodeShape(g, style.nodeShape, px, py, r, state.background, style.color, 2);
             dotEl.setAttribute("data-fidx", fIdx);
+            markerRects.push([px-r,py-r,px+r,py+r]);
           }
         });
       });
@@ -1228,11 +1297,17 @@
         if (style.showNodes){
           const markerEl = drawNodeShape(g, style.nodeShape, px, py, style.nodeRadius, style.color, state.background, 1.5);
           markerEl.setAttribute("data-fidx", fIdx);
+          markerRects.push([px-style.nodeRadius,py-style.nodeRadius,px+style.nodeRadius,py+style.nodeRadius]);
         }
       });
     });
 
-    // 4) labels, always last (on top)
+    // 4) labels, always last (on top). Every visible, named label across
+    // every layer is placed in one shared pass (not per-layer), so a label
+    // gets nudged around markers/labels belonging to other layers too — that
+    // cross-layer awareness is what actually fixes overlapping station names
+    // in dense networks. See placeLabel() above.
+    const occupied = markerRects.slice();
     order.forEach(fIdx=>{
       const feat = feats[fIdx];
       const style = state.styles[fIdx];
@@ -1244,7 +1319,8 @@
       if (isPointish(feat.geomType)){
         pointNodes.filter(p=>p.featureIdx===fIdx).forEach(({node})=>{
           const [px,py]=toScreen(t,node.x,node.y);
-          const txt = svgEl("text", Object.assign({x:px+style.nodeRadius+3,y:py+style.labelSize*0.35,"data-fidx":fIdx,"data-label":"1"}, textAttrs));
+          const placed = placeLabel(px, py, style.nodeRadius, rawName, style, occupied);
+          const txt = svgEl("text", Object.assign({x:placed.x,y:placed.y,"text-anchor":placed.anchor,"data-fidx":fIdx,"data-label":"1"}, textAttrs));
           txt.textContent = rawName;
           g.appendChild(txt);
         });
@@ -1262,7 +1338,8 @@
             lx = nodes[seq.nodeIds[midIdx]].x; ly = nodes[seq.nodeIds[midIdx]].y;
           }
           const [px,py] = toScreen(t, lx, ly);
-          const txt = svgEl("text", Object.assign({x:px+6,y:py-6,"data-fidx":fIdx,"data-label":"1"}, textAttrs));
+          const placed = placeLabel(px, py, 3, rawName, style, occupied);
+          const txt = svgEl("text", Object.assign({x:placed.x,y:placed.y,"text-anchor":placed.anchor,"data-fidx":fIdx,"data-label":"1"}, textAttrs));
           txt.textContent = rawName;
           g.appendChild(txt);
         });
@@ -1332,7 +1409,15 @@
     const feats = state.rawFeatures;
     const el = document.getElementById("legend");
     el.innerHTML = "";
-    if (!feats){ el.innerHTML = '<div class="footer-note">No data loaded yet.</div>'; return; }
+    const bulkBtns = document.getElementById("bulkLabelBtns");
+    if (!feats){ el.innerHTML = '<div class="footer-note">No data loaded yet.</div>'; if (bulkBtns) bulkBtns.style.display = "none"; return; }
+
+    // Bulk label controls only make sense once there are enough point layers
+    // (stations/POIs) that toggling each one's label individually gets tedious.
+    if (bulkBtns){
+      const pointLayerCount = feats.filter(f=>f && isPointish(f.geomType)).length;
+      bulkBtns.style.display = pointLayerCount >= 2 ? "flex" : "none";
+    }
 
     state.order.forEach((fIdx, pos) => {
       const f = feats[fIdx];
@@ -1871,6 +1956,20 @@
     URL.revokeObjectURL(url);
     setStyleStatus("Style exported.", "ok");
   });
+
+  // ---------- Wiring: bulk station-label show/hide ----------
+  // Toggling showLabel on every point-type layer at once, instead of opening
+  // each station's row individually — the "one by one, gets messy" fix.
+  function setAllPointLabels(visible){
+    if (!state.rawFeatures) return;
+    state.rawFeatures.forEach((f, i)=>{
+      if (isPointish(f.geomType)) state.styles[i].showLabel = visible;
+    });
+    renderLegend();
+    runPipeline();
+  }
+  document.getElementById("showAllLabels").addEventListener("click", ()=>setAllPointLabels(true));
+  document.getElementById("hideAllLabels").addEventListener("click", ()=>setAllPointLabels(false));
 
   const importStyleInput = document.getElementById("importStyleInput");
   document.getElementById("importStyleBtn").addEventListener("click", ()=>importStyleInput.click());
