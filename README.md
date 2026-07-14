@@ -113,7 +113,8 @@ Issues and PRs welcome.
 ## About
 
 Built by [Ark Arjun](https://arkives.in) for [Geominds](https://geominds.in), released as open
-source under the MIT license. See the in-app **About** panel (footer link) for the same
+source under the MIT license. The Schemify logo is also designed by
+[Ark Arjun](https://arkives.in). See the in-app **About** panel (footer link) for the same
 information plus data attribution.
 
 Label fonts — Sans-serif, Serif, Script, and Display — are Manjari, Rachana, Chilanka, and
