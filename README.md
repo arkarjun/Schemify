@@ -82,6 +82,17 @@ cleanly, but busy junctions with 3+ connections can land a few degrees off-grid 
 angle constraint can be satisfied at once. A future version may explore a proper optimization-based
 layout for those cases.
 
+**Known limitation — assumes clean input topology.** Schemify's graph step only merges points that
+share exact coordinates, so it works well on data that's already a resolved network graph (e.g. the
+OSM-derived city feeds it fetches, where shared junctions are literally the same node). It does not
+yet handle raw route-level data, where two routes running the same physical corridor are digitized
+as two separate, non-coincident lines, and stops sit near a line rather than snapped onto it.
+Turning that kind of input into a schematic map needs two things Schemify doesn't do today: spatial
+clustering of nearby stops/vertices within a tolerance to infer which points are the same real-world
+station or junction, and detection of route segments that share a corridor so they can be drawn as
+bundled parallel lines rather than tangled overlapping ones. Both are meaningfully harder than the
+angle-snapping this tool currently does. (Feedback from a working transit cartographer, July 2026.)
+
 ## Status / roadmap
 
 - [x] GeoJSON → schematic map generation (points, lines, polygons)
@@ -107,6 +118,10 @@ layout for those cases.
 - [ ] Saving/loading full map projects (data + style together)
 - [ ] Broader city coverage for the network-fetch picker (currently ~45 curated cities; paste
       any direct GeoJSON URL to fetch others)
+- [ ] Topology inference from raw route data: tolerance-based clustering of nearby stops/vertices
+      into shared nodes (input isn't always a pre-resolved graph)
+- [ ] Route bundling: detect segments shared by multiple routes and draw them as offset parallel
+      lines instead of overlapping ones
 
 Issues and PRs welcome.
 
